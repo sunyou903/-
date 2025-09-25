@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>엑셀 매칭 · 일위대가 검사 (브라우저 실행 / Pyodide)</title>
+  <style>
+    :root { --bg:#0b1020; --panel:#121a33; --ink:#eaf0ff; --muted:#a9b3d7; --accent:#86b7ff; --ok:#42d392; --warn:#ffcc66; --err:#ff7a7a; }
+    html,body{height:100%;}
+    body{margin:0; font:14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, "Apple SD Gothic Neo", "Noto Sans KR", Arial; color:var(--ink); background:linear-gradient(180deg,#0b1020,#0e1730);} 
+    header{padding:18px 20px; position:sticky; top:0; background:rgba(11,16,32,.8); backdrop-filter: blur(6px); border-bottom:1px solid #1c2446;}
+    header h1{margin:0; font-size:16px; letter-spacing:.2px;}
+    .wrap{max-width:1100px; margin:24px auto; padding:0 16px;}
+    .tabs{display:flex; gap:8px; margin:10px 0 18px;}
+    .tab{padding:10px 14px; border-radius:12px; background:#0f1a38; border:1px solid #1f2a52; cursor:pointer; color:#cfe3ff}
+    .tab.active{background:#112457; border-color:#26407a; color:#fff}
+    .card{background:var(--panel); border:1px solid #1c2446; border-radius:16px; padding:18px; box-shadow:0 8px 30px rgba(0,0,0,.25)}
+    .grid{display:grid; gap:14px}
+    .g2{grid-template-columns:1fr 1fr}
+    label{display:block; font-weight:600; color:#cfe3ff; margin-bottom:6px}
+    input[type="text"], input[type="number"], select{width:100%; padding:10px 12px; border-radius:10px; border:1px solid #24315f; background:#0f1630; color:#eaf0ff}
+    input[type="file"]{width:100%}
+    button{padding:10px 14px; border-radius:12px; border:1px solid #27407a; background:#15316b; color:#fff; cursor:pointer}
+    button.primary{background:#1f4fb8; border-color:#2f63d1}
+    button:disabled{opacity:.6; cursor:not-allowed}
+    .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+    .badge{display:inline-block; padding:4px 8px; border-radius:999px; font-size:12px; background:#10234a; border:1px solid #223d71}
+    .log{white-space:pre-wrap; background:#0b132e; border:1px solid #1c2446; border-radius:12px; padding:12px; min-height:120px; color:#d6e2ff}
+    .hint{color:var(--muted); font-size:12px}
+    .ok{color:var(--ok)} .warn{color:var(--warn)} .err{color:var(--err)}
+    footer{opacity:.65; padding:24px; text-align:center; font-size:12px}
+    @media(max-width:900px){ .g2{grid-template-columns:1fr} }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>엑셀 매칭 · 일위대가 검사 — 브라우저에서 실행 (Pyodide)</h1>
+  </header>
+  <div class="wrap">
+    <div class="tabs">
+      <div class="tab active" data-tab="match">단가 매칭</div>
+      <div class="tab" data-tab="check">일위대가 검사</div>
+    </div>
+
+    <!-- 매칭 카드 -->
+    <section class="card" id="tab-match">
+      <div class="row" style="justify-content:space-between;">
+        <div class="badge">두 엑셀을 비교해 품명·규격 유사도 기반 매칭</div>
+        <div class="hint">브라우저에서만 동작 — 서버 전송 없음</div>
+      </div>
+      <div class="grid g2" style="margin-top:14px;">
+        <div>
+          <label>엑셀 A 업로드</label>
+          <input type="file" id="fileA" accept=".xlsx,.xls" />
+        </div>
+        <div>
+          <label>엑셀 B 업로드</label>
+          <input type="file" id="fileB" accept=".xlsx,.xls" />
+        </div>
+      </div>
+      <div class="grid g2" style="margin-top:10px;">
+        <div>
+          <label>품명 컬럼명 (A/B 동일 가정)</label>
+          <input id="colName" type="text" value="품명" />
+          <div class="hint">예: 품명, 자재명, 항목명 등</div>
+        </div>
+        <div>
+          <label>규격 컬럼명 (선택)</label>
+          <input id="colSpec" type="text" value="규격" />
+          <div class="hint">비워두면 품명만으로 매칭</div>
+        </div>
+      </div>
+      <div class="grid g2" style="margin-top:10px;">
+        <div>
+          <label>유사도 임계값 (0~1)</label>
+          <input id="simThr" type="number" value="0.6" min="0" max="1" step="0.05" />
+        </div>
+        <div>
+          <label>가중치: 품명 / 규격</label>
+          <div class="row">
+            <input id="wName" type="number" value="0.8" min="0" max="1" step="0.05" style="max-width:120px" />
+            <input id="wSpec" type="number" value="0.2" min="0" max="1" step="0.05" style="max-width:120px" />
+            <span class="hint">합계 1.0 권장</span>
+          </div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:14px; gap:12px;">
+        <button class="primary" id="runMatch">매칭 실행</button>
+        <button id="dlMatch" disabled>결과 엑셀 다운로드</button>
+      </div>
+      <div class="log" id="logMatch" style="margin-top:12px;">[매칭 로그]
+— Pyodide와 pandas/openpyxl을 로드합니다…</div>
+    </section>
+
+    <!-- 검사 카드 -->
+    <section class="card" id="tab-check" style="display:none;">
+      <div class="row" style="justify-content:space-between;">
+        <div class="badge">일위대가/단가대비표/목록 등 시트의 수식·참조 간단 검사</div>
+        <div class="hint">정교한 A~E 규칙 전체 이식 전의 경량판</div>
+      </div>
+      <div class="grid g2" style="margin-top:14px;">
+        <div>
+          <label>엑셀 업로드 (단일)</label>
+          <input type="file" id="fileC" accept=".xlsx,.xls" />
+        </div>
+        <div>
+          <label>참조로 간주할 시트 키워드(쉼표로)</label>
+          <input id="refKeywords" type="text" value="단가대비표,일위대가,목록,공종별내역서,공종별집계표" />
+          <div class="hint">수식 내에 이 텍스트가 포함되면 참조로 인식</div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:14px; gap:12px;">
+        <button class="primary" id="runCheck">검사 실행</button>
+        <button id="dlCheck" disabled>검사 결과 엑셀 다운로드</button>
+      </div>
+      <div class="log" id="logCheck" style="margin-top:12px;">[검사 로그]
+— Pyodide와 pandas/openpyxl을 로드합니다…</div>
+    </section>
+
+    <footer>
+      GitHub Pages 같은 정적 호스팅에 그대로 올리면 동작합니다. (네트워크에서 Pyodide 패키지 로드)
+    </footer>
+  </div>
+
+  <!-- Pyodide -->
+  <script>
+    const state = { pyodide:null, ready:false };
+    const byId = (id)=>document.getElementById(id);
+    const log = (el,msg)=>{ el.textContent += "\n"+msg; el.scrollTop = el.scrollHeight; }
+
+    async function ensurePyodide(logEl){
+      if(state.ready){ return; }
+      log(logEl, "Pyodide 로딩 중… (네트워크 상황에 따라 수십 MB)" );
+      try{
+        // Pick a stable Pyodide version
+        const ver = "0.24.1";
+        const indexURL = `https://cdn.jsdelivr.net/pyodide/v${ver}/full/`;
+        const s = document.createElement('script');
+        s.src = `${indexURL}pyodide.js`;
+        document.head.appendChild(s);
+        await new Promise((res,rej)=>{ s.onload=res; s.onerror=()=>rej(new Error('pyodide.js load error')); });
+        state.pyodide = await loadPyodide({ indexURL });
+        log(logEl, "Pyodide 로드 완료. 패키지 불러오는 중(pandas)…" );
+        await state.pyodide.loadPackage(["pandas"]); // numpy 포함
+        log(logEl, "pandas OK. micropip으로 openpyxl 설치…" );
+        await state.pyodide.loadPackage(["micropip"]);
+        await state.pyodide.runPythonAsync(`import micropip; await micropip.install(['openpyxl','et-xmlfile'])`);
+        state.ready = true;
+        log(logEl, "환경 준비 완료 ✅");
+      }catch(e){
+        console.error(e); log(logEl, "[오류] "+e.message); throw e;
+      }
+    }
+
+    function fileToUint8(file){
+      return new Promise((resolve,reject)=>{
+        const fr = new FileReader();
+        fr.onload = ()=> resolve(new Uint8Array(fr.result));
+        fr.onerror = ()=> reject(fr.error);
+        fr.readAsArrayBuffer(file);
+      });
+    }
+
+    function downloadBytes(bytes, filename){
+      const blob = new Blob([bytes], {type: 'application/octet-stream'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename; a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+    }
+
+    // --- 단가 매칭 실행 ---
+    byId('runMatch').addEventListener('click', async()=>{
+      const logEl = byId('logMatch');
+      try{
+        await ensurePyodide(logEl);
+        const fA = byId('fileA').files[0];
+        const fB = byId('fileB').files[0];
+        if(!fA || !fB){ log(logEl, '두 파일을 업로드하세요.'); return; }
+        const [ua, ub] = await Promise.all([fileToUint8(fA), fileToUint8(fB)]);
+        const FS = state.pyodide.FS; try{ FS.mkdir('/work') }catch{}
+        FS.writeFile('/work/A.xlsx', ua); FS.writeFile('/work/B.xlsx', ub);
+
+        const colName = byId('colName').value.trim() || '품명';
+        const colSpec = byId('colSpec').value.trim();
+        const thr = parseFloat(byId('simThr').value || '0.6');
+        const wName = parseFloat(byId('wName').value || '0.8');
+        const wSpec = parseFloat(byId('wSpec').value || '0.2');
+
+        log(logEl, `실행: 품명=${colName} / 규격=${colSpec||'(없음)'} / 임계값=${thr}`);
+
+        const py = `
+import pandas as pd
+from io import BytesIO
+from difflib import SequenceMatcher
+
+A = pd.read_excel('/work/A.xlsx')
+B = pd.read_excel('/work/B.xlsx')
+
+name_col = ${JSON.stringify('${colName}')}
+spec_col = ${JSON.stringify('${colSpec}')}
+thr = ${thr}
+w_name = ${wName}
+w_spec = ${wSpec}
+
+for df in (A,B):
+    if name_col not in df.columns:
+        raise ValueError(f"컬럼 '{colName}' 이(가) 없음: {list(df.columns)}")
+    if spec_col and spec_col not in df.columns:
+        raise ValueError(f"컬럼 '{colSpec}' 이(가) 없음: {list(df.columns)}")
+
+def sim(a,b):
+    if not a and not b: return 1.0
+    if not a or not b: return 0.0
+    return SequenceMatcher(None, str(a), str(b)).ratio()
+
+rows = []
+for i, r in A.iterrows():
+    nameA = r.get(name_col, '')
+    specA = r.get(spec_col, '') if spec_col else ''
+    best = (-1, None)  # (score, j)
+    for j, s in B.iterrows():
+        nameB = s.get(name_col, '')
+        specB = s.get(spec_col, '') if spec_col else ''
+        score = w_name*sim(nameA,nameB) + (w_spec*sim(specA,specB) if spec_col else 0)
+        if score > best[0]: best = (score, j)
+    j = best[1]
+    if j is not None and best[0] >= thr:
+        s = B.loc[j]
+        out = {
+            'A_index': i,
+            'B_index': j,
+            'name_A': nameA,
+            'name_B': s.get(name_col,''),
+            'spec_A': specA,
+            'spec_B': s.get(spec_col,'') if spec_col else '',
+            'similarity': round(float(best[0]),4)
+        }
+    else:
+        out = {
+            'A_index': i,
+            'B_index': None,
+            'name_A': nameA,
+            'name_B': None,
+            'spec_A': specA,
+            'spec_B': None,
+            'similarity': round(float(best[0]),4)
+        }
+    rows.append(out)
+
+RES = pd.DataFrame(rows)
+with pd.ExcelWriter('/work/match_result.xlsx', engine='openpyxl') as w:
+    A.to_excel(w, index=False, sheet_name='A')
+    B.to_excel(w, index=False, sheet_name='B')
+    RES.to_excel(w, index=False, sheet_name='match')
+`;
+        await state.pyodide.runPythonAsync(py);
+        const bytes = state.pyodide.FS.readFile('/work/match_result.xlsx');
+        byId('dlMatch').disabled = false;
+        byId('dlMatch').onclick = ()=> downloadBytes(bytes, `match_result.xlsx`);
+        log(logEl, '완료 ✅  [결과 엑셀 다운로드] 버튼을 눌러 저장하세요.');
+      }catch(e){ log(logEl, '[오류] '+ e.message); }
+    });
+
+    // --- 일위대가 검사 실행 ---
+    byId('runCheck').addEventListener('click', async()=>{
+      const logEl = byId('logCheck');
+      try{
+        await ensurePyodide(logEl);
+        const f = byId('fileC').files[0];
+        if(!f){ log(logEl, '엑셀 파일을 업로드하세요.'); return; }
+        const ua = await fileToUint8(f);
+        const FS = state.pyodide.FS; try{ FS.mkdir('/work') }catch{}
+        FS.writeFile('/work/C.xlsx', ua);
+        const refKeys = byId('refKeywords').value.split(',').map(s=>s.trim()).filter(Boolean);
+
+        const py = `
+import pandas as pd
+from openpyxl import load_workbook
+from io import BytesIO
+
+ref_keys = ${JSON.stringify(refKeys)}
+wb = load_workbook('/work/C.xlsx', data_only=False)
+
+rows = []
+for ws in wb.worksheets:
+    refs = 0
+    formulas = 0
+    values = 0
+    for row in ws.iter_rows(values_only=False):
+        for c in row:
+            v = c.value
+            if isinstance(v,str) and v.startswith('='):
+                formulas += 1
+                s = v.upper()
+                if any(k.upper() in s for k in ref_keys):
+                    refs += 1
+            elif isinstance(v,(int,float)):
+                values += 1
+    rows.append({
+        'sheet': ws.title,
+        'formula_cells': formulas,
+        'formula_with_ref_keys': refs,
+        'plain_number_values': values
+    })
+
+RES = pd.DataFrame(rows)
+with pd.ExcelWriter('/work/check_result.xlsx', engine='openpyxl') as w:
+    RES.to_excel(w, index=False, sheet_name='summary')
+`;
+        await state.pyodide.runPythonAsync(py);
+        const bytes = state.pyodide.FS.readFile('/work/check_result.xlsx');
+        byId('dlCheck').disabled = false;
+        byId('dlCheck').onclick = ()=> downloadBytes(bytes, `check_result.xlsx`);
+        log(logEl, '완료 ✅  [검사 결과 엑셀 다운로드] 버튼으로 저장하세요.');
+      }catch(e){ log(logEl, '[오류] '+ e.message); }
+    });
+
+    // Tabs
+    for(const t of document.querySelectorAll('.tab')){
+      t.addEventListener('click', ()=>{
+        document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+        t.classList.add('active');
+        const k = t.dataset.tab;
+        byId('tab-match').style.display = (k==='match')? 'block':'none';
+        byId('tab-check').style.display = (k==='check')? 'block':'none';
+      })
+    }
+  </script>
+</body>
+</html>
