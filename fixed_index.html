@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>단가/일위대가 브라우저 검사도구 (Pyodide) - Fixed</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans KR", sans-serif; }
+    body { margin: 24px; }
+    h2 { margin: 24px 0 8px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; }
+    .drop { border: 2px dashed #888; border-radius: 10px; padding: 22px; text-align: center; background: #fafafa; }
+    .drop.dragover { background: #eef7ff; border-color: #2b6cb0; }
+    .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+    button { padding: 8px 12px; border: 1px solid #333; background: #111; color: #fff; border-radius: 8px; cursor: pointer; }
+    button.secondary { background: #fff; color: #111; }
+    #log { white-space: pre-wrap; background: #0b1020; color: #d7e2ff; padding: 12px; border-radius: 8px; min-height: 140px; }
+    .muted { color: #666; font-size: 13px; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:#eef; color:#225; font-size:12px; margin-left:6px;}
+    a.download { display:inline-block; margin-top:8px; }
+  </style>
+
+  <!-- Pyodide -->
+  <script>
+    const PYODIDE_VERSION = "0.26.2";
+    window.PYODIDE_BASE_URL = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
+  </script>
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
+</head>
+<body>
+  <h1>단가/일위대가 브라우저 검사도구 <span class="pill">Pyodide</span></h1>
+  <div class="muted">
+    - ① <b>일위대가 검사</b>: 엑셀 1개 드롭 → LOG에 요약, 결과 ZIP 다운로드<br/>
+    - ② <b>단가 매칭</b>: 엑셀 N개 드롭(다중) → 모든 조합 결과를 <b>시트별로 묶은 1개 XLSX</b> 다운로드
+  </div>
+
+  <div class="row" style="margin-top:20px;">
+    <div class="card">
+      <h2>① 일위대가 검사</h2>
+      <div id="drop-a" class="drop">여기에 엑셀 1개를 Drag & Drop</div>
+      <div class="controls">
+        <label>출력 폴더명: <input id="outdir-a" value="검사_결과" /></label>
+        <button id="run-a">검사 실행</button>
+        <a id="dl-a" class="download secondary" href="#" download style="display:none;">결과 ZIP 다운로드</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>② 단가 매칭 (N개 파일 → 모든 조합 비교)</h2>
+      <div id="drop-b" class="drop">여기에 엑셀 여러 개를 Drag & Drop</div>
+      <div class="controls">
+        <label>결과 파일명: <input id="outfile-b" value="단가매칭_모든조합.xlsx" /></label>
+        <button id="run-b">매칭 실행</button>
+        <a id="dl-b" class="download secondary" href="#" download style="display:none;">결과 XLSX 다운로드</a>
+      </div>
+    </div>
+  </div>
+
+  <h2>LOG</h2>
+  <div id="log">loading pyodide...</div>
+
+<script>
+  const $ = (q) => document.querySelector(q);
+  const log = (m) => { $("#log").textContent += (typeof m === "string" ? m : JSON.stringify(m)) + "\n"; };
+  const setDrag = (el) => {
+    ["dragenter","dragover"].forEach(ev => el.addEventListener(ev, e => { e.preventDefault(); el.classList.add("dragover"); }));
+    ["dragleave","drop"].forEach(ev => el.addEventListener(ev, e => { e.preventDefault(); el.classList.remove("dragover"); }));
+  };
+
+  let pyodide;
+  let filesA = [];
+  let filesB = [];
+
+  setDrag($("#drop-a"));
+  setDrag($("#drop-b"));
+
+  $("#drop-a").addEventListener("drop", (e) => {
+    filesA = [...e.dataTransfer.files];
+    $("#drop-a").textContent = filesA.length ? filesA[0].name : "여기에 엑셀 1개를 Drag & Drop";
+  });
+  $("#drop-b").addEventListener("drop", (e) => {
+    filesB = [...e.dataTransfer.files];
+    $("#drop-b").textContent = filesB.length ? filesB.map(f=>f.name).join(", ") : "여기에 엑셀 여러 개를 Drag & Drop";
+  });
+
+  (async () => {
+    pyodide = await loadPyodide({ indexURL: window.PYODIDE_BASE_URL });
+    log("pyodide loaded.");
+
+    await pyodide.loadPackage(["micropip", "pandas"]);
+    await pyodide.runPythonAsync(`import micropip; await micropip.install("openpyxl==3.1.5")`);
+    // rapidfuzz substitute for browser
+    await pyodide.FS.mkdirTree("/lib/python3.11/site-packages/rapidfuzz");
+    await pyodide.FS.writeFile("/lib/python3.11/site-packages/rapidfuzz/__init__.py", "from .fuzz import token_sort_ratio\n");
+    await pyodide.FS.writeFile("/lib/python3.11/site-packages/rapidfuzz/fuzz.py", `
+from difflib import SequenceMatcher
+def _norm_tokens(s): return " ".join(str(s).split())
+def token_sort_ratio(a, b):
+    ta = " ".join(sorted(_norm_tokens(a).split()))
+    tb = " ".join(sorted(_norm_tokens(b).split()))
+    return int(round(SequenceMatcher(None, ta, tb).ratio() * 100))
+`);
+    // fetch python scripts from repo
+    const [checkSrc, matchSrc] = await Promise.all([
+      fetch("./Matchflag_rev2_9.py").then(r => r.text()),
+      fetch("./Nb2_rev2.py").then(r => r.text()),
+    ]);
+    pyodide.FS.writeFile("/work/check.py", checkSrc);
+    pyodide.FS.writeFile("/work/match.py", matchSrc);
+    log("python sources loaded.");
+  })();
+
+  async function writeFileToFS(file, targetPath) {
+    const buf = await file.arrayBuffer();
+    pyodide.FS.writeFile(targetPath, new Uint8Array(buf));
+  }
+
+  async function zipDirToBlob(dirPath) {
+    const outZip = "/tmp/out.zip";
+    await pyodide.runPythonAsync(`
+import os, io, zipfile
+from pathlib import Path
+root = Path(r"${dirPath}")
+buf = io.BytesIO()
+with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+    for p in root.rglob("*"):
+        if p.is_file(): zf.write(p, arcname=str(p.relative_to(root)))
+with open(r"${outZip}", "wb") as f:
+    f.write(buf.getvalue())
+`);
+    const data = pyodide.FS.readFile(outZip);
+    return new Blob([data], { type: "application/zip" });
+  }
+
+  // Run check script (일위대가 검사)
+  $("#run-a").addEventListener("click", async () => {
+    if (!pyodide) return;
+    if (!filesA.length) { alert("엑셀 1개를 드롭하세요."); return; }
+    const outdir = $("#outdir-a").value || "검사_결과";
+    try {
+      log("▶ 일위대가 검사 실행...");
+      await writeFileToFS(filesA[0], "/work/in.xlsx");
+      const code = `
+import sys, runpy, traceback, os
+from pathlib import Path
+print("[diag] python:", sys.version)
+print("[diag] /work exists:", os.path.exists("/work/in.xlsx"))
+ext = Path("/work/in.xlsx").suffix.lower()
+if ext not in [".xlsx", ".xlsm"]:
+    raise RuntimeError(f"unsupported file type: {ext}")
+try:
+    sys.argv = ["prog", "--infile", "/work/in.xlsx", "--outdir", "/work/${outdir}"]
+    runpy.run_path("/work/check.py", run_name="__main__")
+except Exception:
+    traceback.print_exc()
+    raise
+`;
+      await pyodide.runPythonAsync(code);
+      // zip result directory
+      const blob = await zipDirToBlob("/work/" + outdir);
+      const url = URL.createObjectURL(blob);
+      const a = $("#dl-a");
+      a.href = url;
+      a.download = outdir + ".zip";
+      a.style.display = "inline-block";
+      log("▶ 일위대가 검사 완료.");
+    } catch (e) {
+      const msg = e?.stack || e?.message || String(e);
+      log("ERROR[일위대가 검사]: " + msg);
+    }
+  });
+
+  // Run match script (단가 매칭)
+  $("#run-b").addEventListener("click", async () => {
+    if (!pyodide) return;
+    if (filesB.length < 2) { alert("엑셀 2개 이상을 드롭하세요."); return; }
+    const outfile = $("#outfile-b").value || "단가매칭_모든조합.xlsx";
+    try {
+      log("▶ 단가 매칭 실행...");
+      for (let i = 0; i < filesB.length; i++) {
+        await writeFileToFS(filesB[i], `/work/m${i}.xlsx`);
+      }
+      const code = `
+import itertools, importlib.util
+from pathlib import Path
+import pandas as pd
+from openpyxl import Workbook
+spec = importlib.util.spec_from_file_location("matchmod", "/work/match.py")
+mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+inputs = [str(p) for p in Path("/work").glob("m*.xlsx")]
+inputs.sort()
+wb = Workbook(); ws0 = wb.active; ws0.title = "summary"
+ws0.append(["left","right","rows"])
+def add_sheet(df, title):
+    from openpyxl.utils.dataframe import dataframe_to_rows
+    ws = wb.create_sheet(title[:31])
+    for r in dataframe_to_rows(df, index=False, header=True): ws.append(r)
+for a, b in itertools.combinations(inputs, 2):
+    left_raw = mod.load_sheet(a); right_raw = mod.load_sheet(b)
+    left = mod.extract_core(left_raw); right = mod.extract_core(right_raw)
+    left_label = mod.detect_label(a) or "왼쪽"
+    right_label = mod.detect_label(b) or "오른쪽"
+    res = mod.match_and_compare(left, right, mod.THRESHOLD,
+              left_prefix=left_label, right_prefix=right_label)
+    add_sheet(res, Path(a).stem + "_vs_" + Path(b).stem)
+    ws0.append([Path(a).name, Path(b).name, len(res)])
+ws0.auto_filter.ref = ws0.dimensions
+wb.save("/work/${outfile}")
+`;
+      await pyodide.runPythonAsync(code);
+      const data = pyodide.FS.readFile(`/work/${outfile}`);
+      const blob = new Blob([data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const url = URL.createObjectURL(blob);
+      const a = $("#dl-b");
+      a.href = url;
+      a.download = outfile;
+      a.style.display = "inline-block";
+      log("▶ 단가 매칭 완료.");
+    } catch (e) {
+      const msg = e?.stack || e?.message || String(e);
+      log("ERROR[단가 매칭]: " + msg);
+    }
+  });
+</script>
+</body>
+</html>
