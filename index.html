@@ -166,7 +166,14 @@ with open(r"${outZip}", "wb") as f:
       await writeFileToFS(filesA[0], "/work/in.xlsx");
 
       // 스크립트 파일 쓰기
-      pyodide.FS.writeFile("/work/통합_일위대가_검사.py", PY_SRC_CHECK);
+        // Python source load (from repo files)
+      const checkSrc = await fetch("./Matchflag_rev2_9.py").then(r => r.text());
+      pyodide.FS.writeFile("/work/check.py", checkSrc);
+      
+      const matchSrc = await fetch("./Nb2_rev2.py").then(r => r.text());
+      pyodide.FS.writeFile("/work/match.py", matchSrc);
+      
+      log("python sources loaded.");
 
       // 실행 (원본 main 사용: --infile --outdir)
       const code = `
