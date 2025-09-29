@@ -5,34 +5,37 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>내역서검사 & 단가매칭</title>
   <style>
-    :root{--bg:#0b1020;--fg:#eef2ff;--muted:#9aa4c7;--card:#141a33;--accent:#7c9bff;--ok:#2ecc71;--warn:#ffb020;--err:#ff5c80}
+    :root{--bg:#0b1020;--fg:#eef2ff;--muted:#9aa4c7;--card:#141a33;--accent:#7c9bff}
     html,body{margin:0;background:var(--bg);color:var(--fg);font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Pretendard,Apple SD Gothic Neo,Malgun Gothic,Helvetica,Arial,sans-serif}
     .wrap{max-width:1100px;margin:32px auto;padding:0 16px}
     h1{font-weight:700;letter-spacing:-0.02em}
     .tabs{display:flex;gap:8px;margin:20px 0}
-    .tab{padding:10px 14px;border-radius:12px;background:var(--card);cursor:pointer;color:var(--muted);border:1px solid #232a4a}
+    .tab{padding:10px 14px;border-radius:12px;background:var(--card);cursor:pointer;color:#9aa4c7;border:1px solid #232a4a}
     .tab.active{color:var(--fg);outline:2px solid var(--accent)}
     .panel{display:none}
     .panel.active{display:block}
-    .card{background:var(--card);border:1px solid #232a4a;border-radius:16px;padding:16px;margin:16px 0}
+    .card{background:#141a33;border:1px solid #232a4a;border-radius:16px;padding:16px;margin:16px 0}
     .row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
     input[type=file]{color:var(--fg)}
     button{all:unset;display:inline-flex;gap:8px;align-items:center;cursor:pointer;background:linear-gradient(180deg,#7c9bff,#5a7bff);color:white;padding:10px 14px;border-radius:12px;font-weight:600}
     button:disabled{opacity:.5;cursor:not-allowed}
-    .muted{color:var(--muted)}
+    .muted{color:#9aa4c7}
     .summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:12px}
     .pill{border-radius:12px;padding:10px;background:#0f1530;border:1px solid #222a50}
     .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
     a.dl{display:inline-flex;align-items:center;gap:8px;margin-top:8px;padding:8px 10px;border-radius:10px;background:#0f1530;border:1px solid #222a50;color:#cfe0ff;text-decoration:none}
     progress{width:240px;height:10px}
-    .foot{margin:36px 0;color:var(--muted);font-size:14px}
+    .foot{margin:36px 0;color:#9aa4c7;font-size:14px}
     details{background:#0f1530;border:1px solid #222a50;border-radius:12px;padding:10px}
     code{background:#0e1430;padding:2px 6px;border-radius:6px}
+    .drop{border:2px dashed #2b3566;border-radius:14px;padding:18px;background:#0e1530;color:#cfe0ff;margin-top:10px}
+    .drop.drag{background:#0f1b48;border-color:#7c9bff}
+    .filehint{font-size:12px;color:#9aa4c7}
   </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>내역서검사 & 단가매칭 (GitHub Pages용, 브라우저 실행)</h1>
+  <h1>내역서검사 & 단가매칭 (브라우저 실행)</h1>
 
   <div class="tabs">
     <div class="tab active" data-tab="a">1) 내역서검사</div>
@@ -47,20 +50,15 @@
         <button id="run-a" disabled>검사 실행</button>
         <div id="status-a" class="muted"></div>
       </div>
+      <div class="drop" id="drop-a">여기로 <b>드래그 앤 드롭</b> (단일 파일)
+        <div class="filehint">지원: .xlsx .xlsm .xls</div>
+      </div>
       <div class="row" style="margin-top:8px">
         <progress id="prog-a" value="0" max="100" hidden></progress>
       </div>
       <div id="summary-a" class="summary"></div>
       <div id="downloads-a"></div>
     </div>
-
-    <details>
-      <summary>어떤 검사를 하나요?</summary>
-      <div class="muted" style="margin-top:8px">
-        업로드한 통합 내역 엑셀에서 시트 간 참조 관계를 분석하여 다음 요약을 보여주고, 상세 결과는 xlsx로 내려받을 수 있게 합니다.<br/>
-        (A) 일위대가 ↔ 단가대비표/일위대가목록 참조 검사, (B) 일위대가목록 헤더 매핑, (C) 공종별내역서 외부참조/직접입력, (D) 공종별집계표 단가 참조 매핑, (E) 단가대비표의 외부참조 검사.
-      </div>
-    </details>
   </div>
 
   <!-- Panel B: 단가매칭 -->
@@ -71,20 +69,15 @@
         <button id="run-b" disabled>단가 매칭 실행</button>
         <div id="status-b" class="muted"></div>
       </div>
+      <div class="drop" id="drop-b">여기로 <b>드래그 앤 드롭</b> (여러 파일)
+        <div class="filehint">지원: .xlsx .xlsm .xls — 최소 2개 이상</div>
+      </div>
       <div class="row" style="margin-top:8px">
         <label>유사도 임계값(0~100): <input id="thresh-b" type="number" value="30" min="0" max="100" style="width:80px" /></label>
         <progress id="prog-b" value="0" max="100" hidden></progress>
       </div>
       <div id="downloads-b"></div>
     </div>
-
-    <details>
-      <summary>설명 / 제한</summary>
-      <div class="muted" style="margin-top:8px">
-        각 파일의 <code>단가대비표</code> 시트를 자동 감지하여 헤더행을 추출하고, 업로드한 N개의 파일에 대해 모든 순열(총 n!개)의 쌍(A→B, B→A, …)을 비교하여 하나의 엑셀 안에 시트로 저장합니다. 
-        빠른 브라우저 실행을 위해 문자열 유사도는 <code>difflib.SequenceMatcher</code> 기반으로 구현되었습니다.
-      </div>
-    </details>
   </div>
 
   <div class="foot">
@@ -104,6 +97,20 @@ $$('.tab').forEach(t=>t.addEventListener('click',()=>{
   $('#panel-'+target).classList.add('active');
 }));
 
+// Drag & Drop helpers
+function enableDrop(zone, onFiles){
+  ['dragenter','dragover'].forEach(ev=>zone.addEventListener(ev,(e)=>{e.preventDefault(); zone.classList.add('drag');}));
+  ['dragleave','drop'].forEach(ev=>zone.addEventListener(ev,(e)=>{e.preventDefault(); if(ev==='dragleave') zone.classList.remove('drag');}));
+  zone.addEventListener('drop',(e)=>{
+    zone.classList.remove('drag');
+    const files = e.dataTransfer.files;
+    if(files && files.length){ onFiles(files); }
+  });
+}
+
+enableDrop($('#drop-a'), (files)=>{ if(files.length){ $('#file-a').files = files; $('#run-a').disabled=false; }});
+enableDrop($('#drop-b'), (files)=>{ if(files.length){ $('#files-b').files = files; $('#run-b').disabled = files.length>1 ? false : true; }});
+
 // Pyodide loader
 let pyodideReady = (async()=>{
   const s = document.createElement('script');
@@ -111,18 +118,31 @@ let pyodideReady = (async()=>{
   document.head.appendChild(s);
   await new Promise(r=>{s.onload=r});
   const pyodide = await loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.26.1/full/'});
-  // core packages
-  await pyodide.loadPackage(["pandas","openpyxl","micropip"]);
-  // prepare python helpers (wrapped & minimized)
+  // 기본 패키지 로드 (openpyxl은 여기서 로드하면 실패합니다)
+  await pyodide.loadPackage(["pandas","micropip"]);
+  // openpyxl은 PyPI에서 설치
+  try{
+    await pyodide.runPythonAsync(`
+import micropip
+await micropip.install('openpyxl==3.1.5')
+`);
+  }catch(e){
+    console.error(e);
+    alert('openpyxl 설치 실패
+사내 네트워크에서 PyPI 접근이 제한될 수 있습니다. VPN/프록시 확인 후 새로고침 해주세요.
+상세: '+e);
+    throw e;
+  }
+
   const pyCode = `
-import io, itertools
+import io, itertools, re
 import pandas as pd
 from openpyxl import load_workbook
 
-# ---------------- 공통 유틸 (간소화 버전) ----------------
+# -------- 공통 유틸 --------
 
 def _norm_label(s):
-    return None if s is None else str(s).replace(' ','').replace('\u3000','').strip()
+    return None if s is None else str(s).replace(' ','').replace('　','').strip()
 
 def norm(s):
     return None if s is None else str(s).strip()
@@ -164,9 +184,12 @@ def build_key_map(ws, header_row, pos_map):
         key_by_row[r] = f"{p}|{g}"
     return key_by_row
 
-# ---------------- 검사 A (요약 + 상세) ----------------
-import re
-REF_RE = re.compile(r"(?:'?)((?:단가대비표)|(?:일위대가목록))(?:'?)!\$?([A-Z]{1,3})\$?(\d+)", re.I)
+# -------- A검사 (정규식 안전화) --------
+# 시트명 따옴표 유/무, 열/행 앞 $ 유/무 모두 허용. $를 문자 클래스로 처리해 JS/파이썬 이스케이프 충돌 방지.
+REF_RE = re.compile(
+    r"(?:'?(단가대비표|일위대가목록)'?)![$]?([A-Za-z]{1,3})[$]?([0-9]+)",
+    re.IGNORECASE,
+)
 
 def run_check_A(wb):
     ul = wb['일위대가']
@@ -196,8 +219,10 @@ def run_check_A(wb):
         for c in range(1, ul.max_column+1):
             cell = ul.cell(r,c)
             if cell.data_type == 'f' and isinstance(cell.value,str) and (('단가대비표' in cell.value) or ('일위대가목록' in cell.value)):
-                for sheet_name, col, rownum in REF_RE.findall(cell.value):
-                    rr = int(rownum)
+                for m in REF_RE.finditer(cell.value):
+                    sheet_name = m.group(1)
+                    col = m.group(2)
+                    rr = int(m.group(3))
                     if sheet_name.startswith('단가대비표'):
                         ref_key = up_key.get(rr)
                     else:
@@ -237,7 +262,7 @@ def run_check_A(wb):
     }
     return summary, df
 
-# ---------------- 단가대비표 추출 & 매칭 (difflib) ----------------
+# -------- 단가대비표 추출 & 매칭 --------
 import difflib
 
 def find_header_positions_multirow(df, labels, scan_rows=6):
@@ -336,14 +361,11 @@ def match_and_compare(left_df, right_df, th=30):
     out = pd.DataFrame(rows).sort_values(by='종합유사도(%)', ascending=False).reset_index(drop=True)
     return out
 
-# --------- Wrappers exposed to JS ---------
+# -------- Wrappers --------
 
 def run_inspection_xlsx(xls_bytes: bytes):
     wb = load_workbook(io.BytesIO(xls_bytes), data_only=False, keep_vba=True)
     sumA, dfA = run_check_A(wb)
-    # 요약은 A만 우선 제공 (필요 시 확장 가능)
-    # 결과 엑셀 작성
-    from openpyxl import Workbook
     bio = io.BytesIO()
     with pd.ExcelWriter(bio, engine='openpyxl') as writer:
         pd.DataFrame([sumA]).to_excel(writer, index=False, sheet_name='요약(A)')
@@ -354,33 +376,29 @@ def run_inspection_xlsx(xls_bytes: bytes):
 
 
 def run_bulk_match_xlsx(files: list, thresh: int = 30):
-    # files: list of tuples (name:str, bytes:bytes)
-    # 각 파일의 '단가대비표' 시트를 DataFrame으로 구성
     cores = []
     for name, data in files:
-        xdf = pd.read_excel(io.BytesIO(data), sheet_name='단가대비표', header=None)
+        xdf = pd.read_excel(io.BytesIO(data), sheet_name='단가대비표', header=None, engine='openpyxl')
         core = extract_core(xdf)
         cores.append((name, core))
-    # 모든 순열(ordered pairs)
-    names = [n for n,_ in cores]
     ordered = list(itertools.permutations(range(len(cores)), 2))
     bio = io.BytesIO()
     with pd.ExcelWriter(bio, engine='openpyxl') as writer:
         for i,j in ordered:
             n1, df1 = cores[i]; n2, df2 = cores[j]
             res = match_and_compare(df1, df2, th=thresh)
-            sheet = (n1+"→"+n2)[:31]  # sheet name limit
+            sheet = (n1+"→"+n2)[:31]
             if len(res)==0:
                 pd.DataFrame(columns=['메시지']).to_excel(writer, index=False, sheet_name=sheet)
             else:
                 res.to_excel(writer, index=False, sheet_name=sheet)
-    return names, bio.getvalue()
+    return [n for n,_ in cores], bio.getvalue()
 `;
   await pyodide.runPythonAsync(pyCode);
   return pyodide;
 })();
 
-// Panel A handlers
+// Panel A
 const fileA = $('#file-a');
 const runA = $('#run-a');
 const statusA = $('#status-a');
@@ -391,27 +409,20 @@ const dlsA = $('#downloads-a');
 fileA.addEventListener('change',()=>{ runA.disabled = !(fileA.files && fileA.files[0]); });
 
 runA.addEventListener('click', async ()=>{
-  runA.disabled=true; progA.hidden=false; progA.value=5; statusA.textContent='패키지 & 엔진 준비중...';
+  runA.disabled=true; progA.hidden=false; progA.value=5; statusA.textContent='엔진 준비중...';
   try{
-    const py = await pyodideReady; progA.value=15;
-    const buf = await fileA.files[0].arrayBuffer(); progA.value=30; statusA.textContent='검사 실행중...';
+    const py = await pyodideReady; progA.value=25;
+    const buf = await fileA.files[0].arrayBuffer(); progA.value=40; statusA.textContent='검사 실행중...';
     py.globals.set('UP_XLS', new Uint8Array(buf));
     await py.runPythonAsync('sumA, out_bytes = run_inspection_xlsx(bytes(UP_XLS))');
     progA.value=85; statusA.textContent='결과 정리...';
-    // summary UI
     summaryA.innerHTML = '';
     const sum = py.globals.get('sumA').toJs();
-    const pills = [
-      ['검사 참조건(A)', sum['A_검사한_참조']],
-      ['일치(A)', sum['A_일치']],
-      ['불일치(A)', sum['A_불일치']],
-    ];
-    pills.forEach(([k,v])=>{
+    [['검사 참조건(A)', sum['A_검사한_참조']], ['일치(A)', sum['A_일치']], ['불일치(A)', sum['A_불일치']]].forEach(([k,v])=>{
       const div = document.createElement('div');
       div.className='pill'; div.innerHTML = `<div class="muted">${k}</div><div class="mono" style="font-size:20px">${v}</div>`;
       summaryA.appendChild(div);
     });
-    // download link
     const bytes = py.globals.get('out_bytes').toJs();
     const blob = new Blob([bytes], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     const url = URL.createObjectURL(blob);
@@ -422,13 +433,14 @@ runA.addEventListener('click', async ()=>{
     dlsA.appendChild(a);
     statusA.textContent='완료'; progA.value=100;
   }catch(err){
-    console.error(err); statusA.textContent='오류: '+err.message; alert('오류\n'+err.message);
+    console.error(err); statusA.textContent='오류: '+err.message; alert('오류
+'+err.message);
   }finally{
     progA.hidden=true; runA.disabled=false;
   }
 });
 
-// Panel B handlers
+// Panel B
 const filesB = $('#files-b');
 const runB = $('#run-b');
 const statusB = $('#status-b');
@@ -438,18 +450,19 @@ const threshB = $('#thresh-b');
 
 filesB.addEventListener('change',()=>{ runB.disabled = !(filesB.files && filesB.files.length>1); });
 
+enableDrop($('#drop-b'), (files)=>{ if(files.length){ filesB.files = files; runB.disabled = files.length>1 ? false : true; }});
+
+enableDrop($('#drop-a'), (files)=>{ if(files.length){ fileA.files = files; runA.disabled=false; }});
+
 runB.addEventListener('click', async ()=>{
-  runB.disabled=true; progB.hidden=false; progB.value=8; statusB.textContent='패키지 & 엔진 준비중...';
+  runB.disabled=true; progB.hidden=false; progB.value=8; statusB.textContent='엔진 준비중...';
   try{
-    const py = await pyodideReady; progB.value=15;
+    const py = await pyodideReady; progB.value=20;
     const list = [];
-    // gather files
-    for(const f of filesB.files){
-      list.push([f.name, new Uint8Array(await f.arrayBuffer())]);
-    }
+    for(const f of filesB.files){ list.push([f.name, new Uint8Array(await f.arrayBuffer())]); }
     py.globals.set('FILES_B', list);
     py.globals.set('TH_B', Number(threshB.value)||30);
-    statusB.textContent='매칭 실행중...'; progB.value=35;
+    statusB.textContent='매칭 실행중...'; progB.value=45;
     await py.runPythonAsync('names, out_bytes_b = run_bulk_match_xlsx(FILES_B, TH_B)');
     progB.value=85; statusB.textContent='엑셀 생성...';
     const bytes = py.globals.get('out_bytes_b').toJs();
@@ -462,7 +475,8 @@ runB.addEventListener('click', async ()=>{
     dlsB.appendChild(a);
     statusB.textContent='완료'; progB.value=100;
   }catch(err){
-    console.error(err); statusB.textContent='오류: '+err.message; alert('오류\n'+err.message);
+    console.error(err); statusB.textContent='오류: '+err.message; alert('오류
+'+err.message);
   }finally{
     progB.hidden=true; runB.disabled=false;
   }
