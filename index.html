@@ -1,3 +1,93 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>내역서검사 & 단가매칭</title>
+  <style>
+    :root{--bg:#0b1020;--fg:#eef2ff;--muted:#9aa4c7;--card:#141a33;--accent:#7c9bff}
+    html,body{margin:0;background:var(--bg);color:var(--fg);font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Pretendard,Apple SD Gothic Neo,Malgun Gothic,Helvetica,Arial,sans-serif}
+    .wrap{max-width:1100px;margin:32px auto;padding:0 16px}
+    h1{font-weight:700;letter-spacing:-0.02em}
+    .tabs{display:flex;gap:8px;margin:20px 0}
+    .tab{padding:10px 14px;border-radius:12px;background:var(--card);cursor:pointer;color:#9aa4c7;border:1px solid #232a4a}
+    .tab.active{color:var(--fg);outline:2px solid var(--accent)}
+    .panel{display:none}
+    .panel.active{display:block}
+    .card{background:#141a33;border:1px solid #232a4a;border-radius:16px;padding:16px;margin:16px 0}
+    .row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+    input[type=file]{color:var(--fg)}
+    button{all:unset;display:inline-flex;gap:8px;align-items:center;cursor:pointer;background:linear-gradient(180deg,#7c9bff,#5a7bff);color:white;padding:10px 14px;border-radius:12px;font-weight:600}
+    button:disabled{opacity:.5;cursor:not-allowed}
+    .muted{color:#9aa4c7}
+    .summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:12px}
+    .pill{border-radius:12px;padding:10px;background:#0f1530;border:1px solid #222a50}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    a.dl{display:inline-flex;align-items:center;gap:8px;margin-top:8px;padding:8px 10px;border-radius:10px;background:#0f1530;border:1px solid #222a50;color:#cfe0ff;text-decoration:none}
+    progress{width:240px;height:10px}
+    .foot{margin:36px 0;color:#9aa4c7;font-size:14px}
+    details{background:#0f1530;border:1px solid #222a50;border-radius:12px;padding:10px}
+    code{background:#0e1430;padding:2px 6px;border-radius:6px}
+    .drop{border:2px dashed #2b3566;border-radius:14px;padding:18px;background:#0e1530;color:#cfe0ff;margin-top:10px}
+    .drop.drag{background:#0f1b48;border-color:#7c9bff}
+    .filehint{font-size:12px;color:#9aa4c7}
+    .picked{margin-top:6px;font-size:13px;color:#cfe0ff}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>내역서검사 & 단가매칭 (브라우저 실행)</h1>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="a">1) 내역서검사</div>
+    <div class="tab" data-tab="b">2) 단가매칭 (다중 파일 → 1개 엑셀)</div>
+  </div>
+
+  <!-- Panel A: 내역서검사 -->
+  <div class="panel active" id="panel-a">
+    <div class="card">
+      <div class="row">
+        <label><strong>엑셀 업로드</strong><br/><input id="file-a" type="file" accept=".xlsx,.xlsm,.xls" /></label>
+        <button id="run-a" disabled>검사 실행</button>
+        <div id="status-a" class="muted"></div>
+      </div>
+      <div class="drop" id="drop-a">여기로 <b>드래그 앤 드롭</b> (단일 파일)
+        <div class="filehint">지원: .xlsx .xlsm .xls</div>
+        <div class="picked" id="picked-a"></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <progress id="prog-a" value="0" max="100" hidden></progress>
+      </div>
+      <div id="summary-a" class="summary"></div>
+      <div id="downloads-a"></div>
+    </div>
+  </div>
+
+  <!-- Panel B: 단가매칭 -->
+  <div class="panel" id="panel-b">
+    <div class="card">
+      <div class="row">
+        <label><strong>엑셀 여러 개 업로드</strong><br/><input id="files-b" type="file" multiple accept=".xlsx,.xlsm,.xls" /></label>
+        <button id="run-b" disabled>단가 매칭 실행</button>
+        <div id="status-b" class="muted"></div>
+      </div>
+      <div class="drop" id="drop-b">여기로 <b>드래그 앤 드롭</b> (여러 파일)
+        <div class="filehint">지원: .xlsx .xlsm .xls — 최소 2개 이상</div>
+        <div class="picked" id="picked-b"></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label>유사도 임계값(0~100): <input id="thresh-b" type="number" value="30" min="0" max="100" style="width:80px" /></label>
+        <progress id="prog-b" value="0" max="100" hidden></progress>
+      </div>
+      <div id="downloads-b"></div>
+    </div>
+  </div>
+
+  <div class="foot">
+    브라우저에서만 실행되며, 데이터는 서버로 업로드되지 않습니다. (Pyodide + pandas + openpyxl)
+  </div>
+</div>
+
 <script>
 document.addEventListener('DOMContentLoaded', () => {
   const $  = (s)=>document.querySelector(s);
@@ -377,4 +467,5 @@ def run_bulk_match_xlsx(files: list, thresh: int = 30):
   });
 });
 </script>
-
+</body>
+</html>
