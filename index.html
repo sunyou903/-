@@ -31,6 +31,7 @@
     .drop{border:2px dashed #2b3566;border-radius:14px;padding:18px;background:#0e1530;color:#cfe0ff;margin-top:10px}
     .drop.drag{background:#0f1b48;border-color:#7c9bff}
     .filehint{font-size:12px;color:#9aa4c7}
+    .picked{margin-top:6px;font-size:13px;color:#cfe0ff}
   </style>
 </head>
 <body>
@@ -52,6 +53,7 @@
       </div>
       <div class="drop" id="drop-a">여기로 <b>드래그 앤 드롭</b> (단일 파일)
         <div class="filehint">지원: .xlsx .xlsm .xls</div>
+        <div class="picked" id="picked-a"></div>
       </div>
       <div class="row" style="margin-top:8px">
         <progress id="prog-a" value="0" max="100" hidden></progress>
@@ -71,6 +73,7 @@
       </div>
       <div class="drop" id="drop-b">여기로 <b>드래그 앤 드롭</b> (여러 파일)
         <div class="filehint">지원: .xlsx .xlsm .xls — 최소 2개 이상</div>
+        <div class="picked" id="picked-b"></div>
       </div>
       <div class="row" style="margin-top:8px">
         <label>유사도 임계값(0~100): <input id="thresh-b" type="number" value="30" min="0" max="100" style="width:80px" /></label>
@@ -97,19 +100,49 @@ $$('.tab').forEach(t=>t.addEventListener('click',()=>{
   $('#panel-'+target).classList.add('active');
 }));
 
-// Drag & Drop helpers
+// --- Drag & Drop helpers (input.files는 보안상 직접 대입 불가 → 내부 상태로 관리) ---
 function enableDrop(zone, onFiles){
   ['dragenter','dragover'].forEach(ev=>zone.addEventListener(ev,(e)=>{e.preventDefault(); zone.classList.add('drag');}));
   ['dragleave','drop'].forEach(ev=>zone.addEventListener(ev,(e)=>{e.preventDefault(); if(ev==='dragleave') zone.classList.remove('drag');}));
   zone.addEventListener('drop',(e)=>{
     zone.classList.remove('drag');
     const files = e.dataTransfer.files;
-    if(files && files.length){ onFiles(files); }
+    if(files && files.length){ onFiles(Array.from(files)); }
   });
 }
 
-enableDrop($('#drop-a'), (files)=>{ if(files.length){ $('#file-a').files = files; $('#run-a').disabled=false; }});
-enableDrop($('#drop-b'), (files)=>{ if(files.length){ $('#files-b').files = files; $('#run-b').disabled = files.length>1 ? false : true; }});
+// 내부 상태
+let stateA = null; // File[] or null
+let stateB = null; // File[] or null
+
+// 드롭 활성화
+enableDrop($('#drop-a'), (files)=>{
+  stateA = [files[0]]; // 단일 파일
+  $('#picked-a').textContent = `선택됨: ${files[0].name}`;
+  $('#run-a').disabled = false;
+});
+
+enableDrop($('#drop-b'), (files)=>{
+  stateB = files; // 다중 파일
+  $('#picked-b').textContent = `선택됨: ${files.map(f=>f.name).join(', ')}`;
+  $('#run-b').disabled = files.length>1 ? false : true;
+});
+
+// 파일 선택 UI와 상태 동기화
+const fileA = $('#file-a');
+const filesB = $('#files-b');
+
+fileA.addEventListener('change',()=>{
+  stateA = (fileA.files && fileA.files.length) ? [fileA.files[0]] : null;
+  $('#picked-a').textContent = stateA ? `선택됨: ${stateA[0].name}` : '';
+  $('#run-a').disabled = !stateA;
+});
+
+filesB.addEventListener('change',()=>{
+  stateB = (filesB.files && filesB.files.length) ? Array.from(filesB.files) : null;
+  $('#picked-b').textContent = stateB ? `선택됨: ${stateB.map(f=>f.name).join(', ')}` : '';
+  $('#run-b').disabled = !(stateB && stateB.length>1);
+});
 
 // Pyodide loader
 let pyodideReady = (async()=>{
@@ -118,9 +151,7 @@ let pyodideReady = (async()=>{
   document.head.appendChild(s);
   await new Promise(r=>{s.onload=r});
   const pyodide = await loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.26.1/full/'});
-  // 기본 패키지 로드 (openpyxl은 여기서 로드하면 실패합니다)
   await pyodide.loadPackage(["pandas","micropip"]);
-  // openpyxl은 PyPI에서 설치
   try{
     await pyodide.runPythonAsync(`
 import micropip
@@ -185,11 +216,7 @@ def build_key_map(ws, header_row, pos_map):
     return key_by_row
 
 # -------- A검사 (정규식 안전화) --------
-# 시트명 따옴표 유/무, 열/행 앞 $ 유/무 모두 허용. $를 문자 클래스로 처리해 JS/파이썬 이스케이프 충돌 방지.
-REF_RE = re.compile(
-    r"(?:'?(단가대비표|일위대가목록)'?)![$]?([A-Za-z]{1,3})[$]?([0-9]+)",
-    re.IGNORECASE,
-)
+REF_RE = re.compile(r"(?:'?(단가대비표|일위대가목록)'?)![$]?([A-Za-z]{1,3})[$]?([0-9]+)", re.IGNORECASE)
 
 def run_check_A(wb):
     ul = wb['일위대가']
@@ -220,17 +247,10 @@ def run_check_A(wb):
             cell = ul.cell(r,c)
             if cell.data_type == 'f' and isinstance(cell.value,str) and (('단가대비표' in cell.value) or ('일위대가목록' in cell.value)):
                 for m in REF_RE.finditer(cell.value):
-                    sheet_name = m.group(1)
-                    col = m.group(2)
-                    rr = int(m.group(3))
-                    if sheet_name.startswith('단가대비표'):
-                        ref_key = up_key.get(rr)
-                    else:
-                        ref_key = ls_key.get(rr)
-                    if not ref_key:
-                        continue
+                    sheet_name = m.group(1); col = m.group(2); rr = int(m.group(3))
+                    ref_key = (up_key if sheet_name.startswith('단가대비표') else ls_key).get(rr)
+                    if not ref_key: continue
                     checked += 1
-                    match_status = '일치' if norm_key(ref_key) == norm_key(cur_key) else '불일치'
                     records.append({
                         '일위대가_행': r,
                         '일위대가_품명|규격': cur_key,
@@ -239,7 +259,7 @@ def run_check_A(wb):
                         '참조_품명|규격': ref_key,
                         '수식_셀': cell.coordinate,
                         '수식_일부': cell.value[:140] + ('...' if len(cell.value)>140 else ''),
-                        '일치여부': match_status,
+                        '일치여부': '일치' if norm_key(ref_key)==norm_key(cur_key) else '불일치',
                     })
                     row_has_ref = True
         if not row_has_ref:
@@ -398,21 +418,19 @@ def run_bulk_match_xlsx(files: list, thresh: int = 30):
   return pyodide;
 })();
 
-// Panel A
-const fileA = $('#file-a');
+// Panel A 실행
 const runA = $('#run-a');
 const statusA = $('#status-a');
 const progA = $('#prog-a');
 const summaryA = $('#summary-a');
 const dlsA = $('#downloads-a');
 
-fileA.addEventListener('change',()=>{ runA.disabled = !(fileA.files && fileA.files[0]); });
-
 runA.addEventListener('click', async ()=>{
+  if(!stateA){ alert('파일을 선택하거나 드래그앤드롭 하세요.'); return; }
   runA.disabled=true; progA.hidden=false; progA.value=5; statusA.textContent='엔진 준비중...';
   try{
     const py = await pyodideReady; progA.value=25;
-    const buf = await fileA.files[0].arrayBuffer(); progA.value=40; statusA.textContent='검사 실행중...';
+    const buf = await stateA[0].arrayBuffer(); progA.value=40; statusA.textContent='검사 실행중...';
     py.globals.set('UP_XLS', new Uint8Array(buf));
     await py.runPythonAsync('sumA, out_bytes = run_inspection_xlsx(bytes(UP_XLS))');
     progA.value=85; statusA.textContent='결과 정리...';
@@ -428,7 +446,7 @@ runA.addEventListener('click', async ()=>{
     const url = URL.createObjectURL(blob);
     dlsA.innerHTML = '';
     const a = document.createElement('a');
-    a.href = url; a.download = `${fileA.files[0].name.replace(/\.[^.]+$/,'')}_검사결과.xlsx`;
+    a.href = url; a.download = `${stateA[0].name.replace(/\.[^.]+$/,'')}_검사결과.xlsx`;
     a.className='dl'; a.textContent='결과 엑셀 다운로드';
     dlsA.appendChild(a);
     statusA.textContent='완료'; progA.value=100;
@@ -440,26 +458,20 @@ runA.addEventListener('click', async ()=>{
   }
 });
 
-// Panel B
-const filesB = $('#files-b');
+// Panel B 실행
 const runB = $('#run-b');
 const statusB = $('#status-b');
 const progB = $('#prog-b');
 const dlsB = $('#downloads-b');
 const threshB = $('#thresh-b');
 
-filesB.addEventListener('change',()=>{ runB.disabled = !(filesB.files && filesB.files.length>1); });
-
-enableDrop($('#drop-b'), (files)=>{ if(files.length){ filesB.files = files; runB.disabled = files.length>1 ? false : true; }});
-
-enableDrop($('#drop-a'), (files)=>{ if(files.length){ fileA.files = files; runA.disabled=false; }});
-
 runB.addEventListener('click', async ()=>{
+  if(!(stateB && stateB.length>1)){ alert('파일을 2개 이상 선택 또는 드래그앤드롭 하세요.'); return; }
   runB.disabled=true; progB.hidden=false; progB.value=8; statusB.textContent='엔진 준비중...';
   try{
     const py = await pyodideReady; progB.value=20;
     const list = [];
-    for(const f of filesB.files){ list.push([f.name, new Uint8Array(await f.arrayBuffer())]); }
+    for(const f of stateB){ list.push([f.name, new Uint8Array(await f.arrayBuffer())]); }
     py.globals.set('FILES_B', list);
     py.globals.set('TH_B', Number(threshB.value)||30);
     statusB.textContent='매칭 실행중...'; progB.value=45;
