@@ -146,23 +146,38 @@ with open(r"${outZip}", "wb") as f: f.write(buf.getvalue())
       await writeFileToFS(filesA[0], "/work/in.xlsx");
 
       const code = `
-import sys, runpy
-sys.argv = ["prog", "--infile", "/work/in.xlsx", "--outdir", "/work/${outdir}"]
-runpy.run_path("/work/check.py", run_name="__main__")
+import sys, runpy, traceback, os, importlib, platform
+from pathlib import Path
+
+print("[diag] python:", platform.python_version())
+try:
+    import openpyxl, pandas
+    print("[diag] openpyxl:", openpyxl.__version__)
+    print("[diag] pandas:", pandas.__version__)
+except Exception as _e:
+    print("[diag] import err:", _e)
+
+print("[diag] /work list:", os.listdir("/work"))
+print("[diag] infile exists:", os.path.exists("/work/in.xlsx"))
+
+ext = Path("/work/in.xlsx").suffix.lower()
+if ext not in [".xlsx", ".xlsm"]:
+    raise RuntimeError(f"unsupported file type: {ext} (need .xlsx or .xlsm)")
+
+try:
+    sys.argv = ["prog", "--infile", "/work/in.xlsx", "--outdir", "/work/${outdir}"]
+    runpy.run_path("/work/check.py", run_name="__main__")
+except SystemExit as e:
+    print("[diag] SystemExit:", e.code)
+    raise
+except Exception:
+    print("[diag] traceback ↓↓↓")
+    traceback.print_exc()
+    raise
 `;
-      await pyodide.runPythonAsync(code);
+await pyodide.runPythonAsync(code);
 
-      const blob = await zipDirToBlob("/work/" + outdir);
-      const url = URL.createObjectURL(blob);
-      const a = $("#dl-a");
-      a.href = url; a.download = `${outdir}.zip`; a.style.display = "inline-block";
-      log("▶ 일위대가 검사 완료.");
-    } catch (e) {
-      const msg = e?.stack || e?.message || String(e);
-      log("ERROR[일위대가 검사]: " + msg);
-    }
-  });
-
+  
   $("#run-b").addEventListener("click", async () => {
     if (!pyodide) return;
     if (filesB.length < 2) { alert("엑셀 2개 이상을 드롭하세요."); return; }
