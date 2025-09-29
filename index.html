@@ -1,189 +1,125 @@
-<!doctype html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>내역서검사 & 단가매칭</title>
-  <style>
-    :root{--bg:#0b1020;--fg:#eef2ff;--muted:#9aa4c7;--card:#141a33;--accent:#7c9bff}
-    html,body{margin:0;background:var(--bg);color:var(--fg);font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Pretendard,Apple SD Gothic Neo,Malgun Gothic,Helvetica,Arial,sans-serif}
-    .wrap{max-width:1100px;margin:32px auto;padding:0 16px}
-    h1{font-weight:700;letter-spacing:-0.02em}
-    .tabs{display:flex;gap:8px;margin:20px 0}
-    .tab{padding:10px 14px;border-radius:12px;background:var(--card);cursor:pointer;color:#9aa4c7;border:1px solid #232a4a}
-    .tab.active{color:var(--fg);outline:2px solid var(--accent)}
-    .panel{display:none}
-    .panel.active{display:block}
-    .card{background:#141a33;border:1px solid #232a4a;border-radius:16px;padding:16px;margin:16px 0}
-    .row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
-    input[type=file]{color:var(--fg)}
-    button{all:unset;display:inline-flex;gap:8px;align-items:center;cursor:pointer;background:linear-gradient(180deg,#7c9bff,#5a7bff);color:white;padding:10px 14px;border-radius:12px;font-weight:600}
-    button:disabled{opacity:.5;cursor:not-allowed}
-    .muted{color:#9aa4c7}
-    .summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:12px}
-    .pill{border-radius:12px;padding:10px;background:#0f1530;border:1px solid #222a50}
-    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-    a.dl{display:inline-flex;align-items:center;gap:8px;margin-top:8px;padding:8px 10px;border-radius:10px;background:#0f1530;border:1px solid #222a50;color:#cfe0ff;text-decoration:none}
-    progress{width:240px;height:10px}
-    .foot{margin:36px 0;color:#9aa4c7;font-size:14px}
-    details{background:#0f1530;border:1px solid #222a50;border-radius:12px;padding:10px}
-    code{background:#0e1430;padding:2px 6px;border-radius:6px}
-    .drop{border:2px dashed #2b3566;border-radius:14px;padding:18px;background:#0e1530;color:#cfe0ff;margin-top:10px}
-    .drop.drag{background:#0f1b48;border-color:#7c9bff}
-    .filehint{font-size:12px;color:#9aa4c7}
-    .picked{margin-top:6px;font-size:13px;color:#cfe0ff}
-  </style>
-</head>
-<body>
-<div class="wrap">
-  <h1>내역서검사 & 단가매칭 (브라우저 실행)</h1>
-
-  <div class="tabs">
-    <div class="tab active" data-tab="a">1) 내역서검사</div>
-    <div class="tab" data-tab="b">2) 단가매칭 (다중 파일 → 1개 엑셀)</div>
-  </div>
-
-  <!-- Panel A: 내역서검사 -->
-  <div class="panel active" id="panel-a">
-    <div class="card">
-      <div class="row">
-        <label><strong>엑셀 업로드</strong><br/><input id="file-a" type="file" accept=".xlsx,.xlsm,.xls" /></label>
-        <button id="run-a" disabled>검사 실행</button>
-        <div id="status-a" class="muted"></div>
-      </div>
-      <div class="drop" id="drop-a">여기로 <b>드래그 앤 드롭</b> (단일 파일)
-        <div class="filehint">지원: .xlsx .xlsm .xls</div>
-        <div class="picked" id="picked-a"></div>
-      </div>
-      <div class="row" style="margin-top:8px">
-        <progress id="prog-a" value="0" max="100" hidden></progress>
-      </div>
-      <div id="summary-a" class="summary"></div>
-      <div id="downloads-a"></div>
-    </div>
-  </div>
-
-  <!-- Panel B: 단가매칭 -->
-  <div class="panel" id="panel-b">
-    <div class="card">
-      <div class="row">
-        <label><strong>엑셀 여러 개 업로드</strong><br/><input id="files-b" type="file" multiple accept=".xlsx,.xlsm,.xls" /></label>
-        <button id="run-b" disabled>단가 매칭 실행</button>
-        <div id="status-b" class="muted"></div>
-      </div>
-      <div class="drop" id="drop-b">여기로 <b>드래그 앤 드롭</b> (여러 파일)
-        <div class="filehint">지원: .xlsx .xlsm .xls — 최소 2개 이상</div>
-        <div class="picked" id="picked-b"></div>
-      </div>
-      <div class="row" style="margin-top:8px">
-        <label>유사도 임계값(0~100): <input id="thresh-b" type="number" value="30" min="0" max="100" style="width:80px" /></label>
-        <progress id="prog-b" value="0" max="100" hidden></progress>
-      </div>
-      <div id="downloads-b"></div>
-    </div>
-  </div>
-
-  <div class="foot">
-    브라우저에서만 실행되며, 데이터는 서버로 업로드되지 않습니다. (Pyodide + pandas + openpyxl)
-  </div>
-</div>
-
 <script>
-const $ = (s)=>document.querySelector(s);
-const $$ = (s)=>document.querySelectorAll(s);
-// tab logic
-$$('.tab').forEach(t=>t.addEventListener('click',()=>{
-  $$('.tab').forEach(x=>x.classList.remove('active'));
-  t.classList.add('active');
-  const target = t.dataset.tab;
-  $$('.panel').forEach(p=>p.classList.remove('active'));
-  $('#panel-'+target).classList.add('active');
-}));
+document.addEventListener('DOMContentLoaded', () => {
+  const $  = (s)=>document.querySelector(s);
+  const $$ = (s)=>document.querySelectorAll(s);
 
-// --- Drag & Drop helpers (input.files는 보안상 직접 대입 불가 → 내부 상태로 관리) ---
-function enableDrop(zone, onFiles){
-  ['dragenter','dragover'].forEach(ev=>zone.addEventListener(ev,(e)=>{e.preventDefault(); zone.classList.add('drag');}));
-  ['dragleave','drop'].forEach(ev=>zone.addEventListener(ev,(e)=>{e.preventDefault(); if(ev==='dragleave') zone.classList.remove('drag');}));
-  zone.addEventListener('drop',(e)=>{
-    zone.classList.remove('drag');
-    const files = e.dataTransfer.files;
-    if(files && files.length){ onFiles(Array.from(files)); }
+  // 탭
+  $$('.tab').forEach(t=>t.addEventListener('click',()=>{
+    $$('.tab').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    const target = t.dataset.tab;
+    $$('.panel').forEach(p=>p.classList.remove('active'));
+    $('#panel-'+target).classList.add('active');
+  }));
+
+  // --- 전역 드롭 허용 (중요) ---
+  // 일부 브라우저는 페이지 레벨에서 dragover/drop를 막지 않으면 자식 엘리먼트로 전달하지 않습니다.
+  ['dragenter','dragover','dragleave','drop'].forEach(ev=>{
+    window.addEventListener(ev, e => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
   });
-}
 
-// 내부 상태
-let stateA = null; // File[] or null
-let stateB = null; // File[] or null
-
-// 드롭 활성화
-enableDrop($('#drop-a'), (files)=>{
-  stateA = [files[0]]; // 단일 파일
-  $('#picked-a').textContent = `선택됨: ${files[0].name}`;
-  $('#run-a').disabled = false;
-});
-
-enableDrop($('#drop-b'), (files)=>{
-  stateB = files; // 다중 파일
-  $('#picked-b').textContent = `선택됨: ${files.map(f=>f.name).join(', ')}`;
-  $('#run-b').disabled = files.length>1 ? false : true;
-});
-
-// 파일 선택 UI와 상태 동기화
-const fileA = $('#file-a');
-const filesB = $('#files-b');
-
-fileA.addEventListener('change',()=>{
-  stateA = (fileA.files && fileA.files.length) ? [fileA.files[0]] : null;
-  $('#picked-a').textContent = stateA ? `선택됨: ${stateA[0].name}` : '';
-  $('#run-a').disabled = !stateA;
-});
-
-filesB.addEventListener('change',()=>{
-  stateB = (filesB.files && filesB.files.length) ? Array.from(filesB.files) : null;
-  $('#picked-b').textContent = stateB ? `선택됨: ${stateB.map(f=>f.name).join(', ')}` : '';
-  $('#run-b').disabled = !(stateB && stateB.length>1);
-});
-
-// Pyodide loader
-let pyodideReady = (async()=>{
-  const s = document.createElement('script');
-  s.src = 'https://cdn.jsdelivr.net/pyodide/v0.26.1/full/pyodide.js';
-  document.head.appendChild(s);
-  await new Promise(r=>{s.onload=r});
-  const pyodide = await loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.26.1/full/'});
-  await pyodide.loadPackage(["pandas","micropip"]);
-  try{
-    await pyodide.runPythonAsync(`
-import micropip
-await micropip.install('openpyxl==3.1.5')
-`);
-  }catch(e){
-    console.error(e);
-    alert('openpyxl 설치 실패
-사내 네트워크에서 PyPI 접근이 제한될 수 있습니다. VPN/프록시 확인 후 새로고침 해주세요.
-상세: '+e);
-    throw e;
+  // --- Drag & Drop helper ---
+  function enableDrop(zone, onFiles){
+    zone.addEventListener('dragenter', e=>{ e.preventDefault(); zone.classList.add('drag'); });
+    zone.addEventListener('dragover',  e=>{ e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+    zone.addEventListener('dragleave', e=>{ e.preventDefault(); zone.classList.remove('drag'); });
+    zone.addEventListener('drop', e=>{
+      e.preventDefault(); zone.classList.remove('drag');
+      const dt = e.dataTransfer;
+      let files = [];
+      if (dt.items && dt.items.length) {
+        // DataTransferItemList 우선 (폴더 드래그 시 파일만 추출)
+        for (const item of dt.items) {
+          if (item.kind === 'file') { const f = item.getAsFile(); if (f) files.push(f); }
+        }
+      } else if (dt.files && dt.files.length) {
+        files = Array.from(dt.files);
+      }
+      if (files.length) onFiles(files);
+    });
   }
 
-  const pyCode = `
+  // 상태 버퍼 (input.files는 건드리지 않음)
+  let stateA = null; // 단일 파일
+  let stateB = null; // 다중 파일
+
+  // 엘리먼트
+  const fileA   = $('#file-a');
+  const filesB  = $('#files-b');
+  const runA    = $('#run-a');
+  const runB    = $('#run-b');
+  const pickedA = $('#picked-a');
+  const pickedB = $('#picked-b');
+
+  // 드롭 활성화
+  enableDrop($('#drop-a'), (files)=>{
+    stateA = [files[0]];
+    pickedA.textContent = `선택됨: ${files[0].name}`;
+    runA.disabled = false;
+  });
+  enableDrop($('#drop-b'), (files)=>{
+    stateB = files;
+    pickedB.textContent = `선택됨: ${files.map(f=>f.name).join(', ')}`;
+    runB.disabled = files.length > 1 ? false : true;
+  });
+
+  // 파일 선택(클릭)과 상태 동기화
+  fileA.addEventListener('input', ()=>{ // 일부 브라우저는 change 대신 input이 먼저/혹은 단독으로 뜸
+    stateA = (fileA.files && fileA.files.length) ? [fileA.files[0]] : null;
+    pickedA.textContent = stateA ? `선택됨: ${stateA[0].name}` : '';
+    runA.disabled = !stateA;
+  });
+  fileA.addEventListener('change', ()=>{ // 안전하게 둘 다
+    stateA = (fileA.files && fileA.files.length) ? [fileA.files[0]] : null;
+    pickedA.textContent = stateA ? `선택됨: ${stateA[0].name}` : '';
+    runA.disabled = !stateA;
+  });
+
+  filesB.addEventListener('input', ()=>{
+    stateB = (filesB.files && filesB.files.length) ? Array.from(filesB.files) : null;
+    pickedB.textContent = stateB ? `선택됨: ${stateB.map(f=>f.name).join(', ')}` : '';
+    runB.disabled = !(stateB && stateB.length > 1);
+  });
+  filesB.addEventListener('change', ()=>{
+    stateB = (filesB.files && filesB.files.length) ? Array.from(filesB.files) : null;
+    pickedB.textContent = stateB ? `선택됨: ${stateB.map(f=>f.name).join(', ')}` : '';
+    runB.disabled = !(stateB && stateB.length > 1);
+  });
+
+  // ===== Pyodide 준비 =====
+  let pyodideReady = (async()=>{
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/pyodide/v0.26.1/full/pyodide.js';
+    document.head.appendChild(s);
+    await new Promise(r=>{ s.onload = r; });
+    const pyodide = await loadPyodide({ indexURL:'https://cdn.jsdelivr.net/pyodide/v0.26.1/full/' });
+    await pyodide.loadPackage(["pandas","micropip"]);
+    try{
+      await pyodide.runPythonAsync(`
+import micropip
+await micropip.install('openpyxl==3.1.5')
+      `);
+    }catch(e){
+      console.error(e);
+      alert('openpyxl 설치 실패\\n사내 네트워크에서 PyPI 접근이 제한될 수 있습니다. VPN/프록시 확인 후 새로고침 해주세요.\\n상세: '+e);
+      throw e;
+    }
+
+    // 파이썬 유틸 로드 (정규식은 $ 안전 처리)
+    const pyCode = `
 import io, itertools, re
 import pandas as pd
 from openpyxl import load_workbook
-
-# -------- 공통 유틸 --------
-
-def _norm_label(s):
-    return None if s is None else str(s).replace(' ','').replace('　','').strip()
-
-def norm(s):
-    return None if s is None else str(s).strip()
-
+def _norm_label(s): return None if s is None else str(s).replace(' ','').replace('\\u3000','').strip()
+def norm(s): return None if s is None else str(s).strip()
 def _norm_commas_ws(s):
     if s is None: return ''
     t = str(s).replace(',', ' ')
     t = ' '.join(t.split())
     return t.strip()
-
 def norm_key(key):
     if key is None: return ''
     s = str(key)
@@ -191,7 +127,6 @@ def norm_key(key):
         a,b = s.split('|',1)
         return f"{_norm_commas_ws(a)}|{_norm_commas_ws(b)}"
     return _norm_commas_ws(s)
-
 def find_cols(ws, required_labels, max_scan_rows=40, max_scan_cols=120):
     req = { _norm_label(x) for x in required_labels }
     for r in range(1, max_scan_rows+1):
@@ -200,12 +135,9 @@ def find_cols(ws, required_labels, max_scan_rows=40, max_scan_cols=120):
             v = _norm_label(ws.cell(r,c).value)
             if v in req:
                 for lab in required_labels:
-                    if _norm_label(lab) == v:
-                        found[lab] = c; break
-        if set(required_labels).issubset(found.keys()):
-            return r, found
+                    if _norm_label(lab) == v: found[lab] = c; break
+        if set(required_labels).issubset(found.keys()): return r, found
     raise RuntimeError(f"헤더 라벨 탐색 실패: {ws.title} -> {required_labels}")
-
 def build_key_map(ws, header_row, pos_map):
     key_by_row = {}
     for r in range(header_row+1, ws.max_row+1):
@@ -214,34 +146,23 @@ def build_key_map(ws, header_row, pos_map):
         if p is None and g is None: continue
         key_by_row[r] = f"{p}|{g}"
     return key_by_row
-
-# -------- A검사 (정규식 안전화) --------
 REF_RE = re.compile(r"(?:'?(단가대비표|일위대가목록)'?)![$]?([A-Za-z]{1,3})[$]?([0-9]+)", re.IGNORECASE)
-
 def run_check_A(wb):
-    ul = wb['일위대가']
-    up = wb['단가대비표']
-    lst = wb['일위대가목록']
+    ul = wb['일위대가']; up = wb['단가대비표']; lst = wb['일위대가목록']
     ul_hr, ul_pos = find_cols(ul, {'품명','규격','단위','수량'})
     up_hr, up_pos = find_cols(up, {'품명','규격','단위'})
     ls_hr, ls_pos = find_cols(lst, {'품명','규격'})
-
     def is_sum_row_ul(r):
         pname = norm(ul.cell(r, ul_pos['품명']).value)
         if not pname: return False
-        t = str(pname)
-        return ('합' in t and '계' in t) and ('[' in t and ']' in t)
-
+        t = str(pname); return ('합' in t and '계' in t) and ('[' in t and ']' in t)
     ul_key = build_key_map(ul, ul_hr, ul_pos)
     up_key = build_key_map(up, up_hr, up_pos)
     ls_key = build_key_map(lst, ls_hr, ls_pos)
-
     records = []; checked = 0
-
     for r in range(ul_hr+1, ul.max_row+1):
         cur_key = ul_key.get(r)
-        if not cur_key or is_sum_row_ul(r):
-            continue
+        if not cur_key or is_sum_row_ul(r): continue
         row_has_ref = False
         for c in range(1, ul.max_column+1):
             cell = ul.cell(r,c)
@@ -263,8 +184,7 @@ def run_check_A(wb):
                     })
                     row_has_ref = True
         if not row_has_ref:
-            cidx = ul_pos['수량']
-            val = ul.cell(r, cidx).value
+            cidx = ul_pos['수량']; val = ul.cell(r, cidx).value
             if val not in (None, '', 0):
                 records.append({
                     '일위대가_행': r,
@@ -275,16 +195,11 @@ def run_check_A(wb):
                     '일치여부': '불일치'
                 })
     df = pd.DataFrame(records)
-    summary = {
-        'A_검사한_참조': int(checked),
-        'A_일치': int((df['일치여부']=='일치').sum()) if not df.empty else 0,
-        'A_불일치': int((df['일치여부']=='불일치').sum()) if not df.empty else 0,
-    }
+    summary = {'A_검사한_참조': int(checked),
+               'A_일치': int((df['일치여부']=='일치').sum()) if not df.empty else 0,
+               'A_불일치': int((df['일치여부']=='불일치').sum()) if not df.empty else 0}
     return summary, df
-
-# -------- 단가대비표 추출 & 매칭 --------
 import difflib
-
 def find_header_positions_multirow(df, labels, scan_rows=6):
     found = {t: [] for t in labels.values()}
     for r in range(min(scan_rows, len(df))):
@@ -294,53 +209,37 @@ def find_header_positions_multirow(df, labels, scan_rows=6):
             if isinstance(val,str):
                 key = val.replace(' ','')
                 for t in labels.values():
-                    if key == t.replace(' ',''):
-                        found[t].append((r,col))
+                    if key == t.replace(' ',''): found[t].append((r,col))
     return found
-
-LABELS = {
-    '품명':'품 명','규격':'규 격','단위':'단위','재료비적용단가':'재료비 적용단가','노무비':'노 무 비','경비적용단가':'경비 적용단가'
-}
-
+LABELS = {'품명':'품 명','규격':'규 격','단위':'단위','재료비적용단가':'재료비 적용단가','노무비':'노 무 비','경비적용단가':'경비 적용단가'}
 def extract_core(df):
     pos = find_header_positions_multirow(df, LABELS, 6)
     row_count = {}
     for hits in pos.values():
-        for r,_ in hits:
-            row_count[r] = row_count.get(r,0)+1
+        for r,_ in hits: row_count[r] = row_count.get(r,0)+1
     header_row = max(row_count.items(), key=lambda x:x[1])[0]
     def pick(label):
         hits = [(r,c) for (r,c) in pos[label] if r==header_row]
         return hits[0][1] if hits else None
-    col_map = {
-        '품명': pick(LABELS['품명']),
-        '규격': pick(LABELS['규격']),
-        '단위': pick(LABELS['단위']),
-        '재료비적용단가': pick(LABELS['재료비적용단가']),
-        '노무비': pick(LABELS['노무비']),
-        '경비적용단가': pick(LABELS['경비적용단가']),
-    }
+    col_map = {'품명': pick(LABELS['품명']),
+               '규격': pick(LABELS['규격']),
+               '단위': pick(LABELS['단위']),
+               '재료비적용단가': pick(LABELS['재료비적용단가']),
+               '노무비': pick(LABELS['노무비']),
+               '경비적용단가': pick(LABELS['경비적용단가'])}
     dat = df.loc[header_row+1:, list(col_map.values())].copy()
     dat.columns = ['품명','규격','단위','재료비적용단가','노무비','경비적용단가']
-    for c in ['재료비적용단가','노무비','경비적용단가']:
-        dat[c] = pd.to_numeric(dat[c], errors='coerce')
-    dat = dat.dropna(subset=['품명']).copy()
-    dat['규격'] = dat['규격'].fillna('')
+    for c in ['재료비적용단가','노무비','경비적용단가']: dat[c] = pd.to_numeric(dat[c], errors='coerce')
+    dat = dat.dropna(subset=['품명']).copy(); dat['규격'] = dat['규격'].fillna('')
     return dat
-
 def token_sort_ratio(a,b):
-    a = ' '.join(sorted(str(a).split()))
-    b = ' '.join(sorted(str(b).split()))
+    a = ' '.join(sorted(str(a).split())); b = ' '.join(sorted(str(b).split()))
     return difflib.SequenceMatcher(None, a, b).ratio()*100.0
-
 def sim(a,b):
-    if (a=='' or pd.isna(a)) and (b=='' or pd.isna(b)):
-        return 100.0
+    if (a=='' or pd.isna(a)) and (b=='' or pd.isna(b)): return 100.0
     return token_sort_ratio(a,b)
-
 def match_and_compare(left_df, right_df, th=30):
-    right_df = right_df.copy()
-    right_df['품명_norm'] = right_df['품명'].map(lambda s: str(s).strip())
+    right_df = right_df.copy(); right_df['품명_norm'] = right_df['품명'].map(lambda s: str(s).strip())
     rows = []
     for _, a in left_df.iterrows():
         a_name = str(a['품명']).strip(); a_spec = a['규격']
@@ -350,8 +249,7 @@ def match_and_compare(left_df, right_df, th=30):
             best_idx=None; best_spec=-1
             for idx,c in exact.iterrows():
                 s = sim(a_spec, c['규격'])
-                if s>best_spec:
-                    best_spec=s; best_idx=idx
+                if s>best_spec: best_spec=s; best_idx=idx
             c = right_df.loc[best_idx]
             name_sim, spec_sim = 100.0, best_spec
             total = 0.8*name_sim + 0.2*spec_sim
@@ -367,22 +265,18 @@ def match_and_compare(left_df, right_df, th=30):
             if best_score>=th and best_idx is not None:
                 c = right_df.loc[best_idx]
                 chosen=c; match_type='가중유사도'; name_sim=best_name; spec_sim=best_spec; total=best_score
-        if chosen is None:
-            continue
+        if chosen is None: continue
         rows.append({
-            'Left_품명': a['품명'], 'Left_규격': a_spec,
-            'Right_품명': chosen['품명'], 'Right_규격': chosen['규격'],
-            '매칭유형': match_type,
-            '종합유사도(%)': round(total,1), '품명유사(%)': round(name_sim,1), '규격유사(%)': round(spec_sim,1),
-            'Left_재료비적용단가': a['재료비적용단가'], 'Right_재료비적용단가': chosen['재료비적용단가'],
-            'Left_노무비': a['노무비'], 'Right_노무비': chosen['노무비'],
-            'Left_경비적용단가': a['경비적용단가'], 'Right_경비적용단가': chosen['경비적용단가'],
+          'Left_품명': a['품명'], 'Left_규격': a_spec,
+          'Right_품명': chosen['품명'], 'Right_규격': chosen['규격'],
+          '매칭유형': match_type,
+          '종합유사도(%)': round(total,1), '품명유사(%)': round(name_sim,1), '규격유사(%)': round(spec_sim,1),
+          'Left_재료비적용단가': a['재료비적용단가'], 'Right_재료비적용단가': chosen['재료비적용단가'],
+          'Left_노무비': a['노무비'], 'Right_노무비': chosen['노무비'],
+          'Left_경비적용단가': a['경비적용단가'], 'Right_경비적용단가': chosen['경비적용단가'],
         })
     out = pd.DataFrame(rows).sort_values(by='종합유사도(%)', ascending=False).reset_index(drop=True)
     return out
-
-# -------- Wrappers --------
-
 def run_inspection_xlsx(xls_bytes: bytes):
     wb = load_workbook(io.BytesIO(xls_bytes), data_only=False, keep_vba=True)
     sumA, dfA = run_check_A(wb)
@@ -393,14 +287,11 @@ def run_inspection_xlsx(xls_bytes: bytes):
         dfA[dfA['일치여부']=='일치'].to_excel(writer, index=False, sheet_name='A_일치')
         dfA[dfA['일치여부']=='불일치'].to_excel(writer, index=False, sheet_name='A_불일치')
     return sumA, bio.getvalue()
-
-
 def run_bulk_match_xlsx(files: list, thresh: int = 30):
     cores = []
     for name, data in files:
         xdf = pd.read_excel(io.BytesIO(data), sheet_name='단가대비표', header=None, engine='openpyxl')
-        core = extract_core(xdf)
-        cores.append((name, core))
+        core = extract_core(xdf); cores.append((name, core))
     ordered = list(itertools.permutations(range(len(cores)), 2))
     bio = io.BytesIO()
     with pd.ExcelWriter(bio, engine='openpyxl') as writer:
@@ -408,91 +299,82 @@ def run_bulk_match_xlsx(files: list, thresh: int = 30):
             n1, df1 = cores[i]; n2, df2 = cores[j]
             res = match_and_compare(df1, df2, th=thresh)
             sheet = (n1+"→"+n2)[:31]
-            if len(res)==0:
-                pd.DataFrame(columns=['메시지']).to_excel(writer, index=False, sheet_name=sheet)
-            else:
-                res.to_excel(writer, index=False, sheet_name=sheet)
+            (pd.DataFrame(columns=['메시지']) if len(res)==0 else res).to_excel(writer, index=False, sheet_name=sheet)
     return [n for n,_ in cores], bio.getvalue()
-`;
-  await pyodide.runPythonAsync(pyCode);
-  return pyodide;
-})();
+    `;
+    await pyodide.runPythonAsync(pyCode);
+    return pyodide;
+  })();
 
-// Panel A 실행
-const runA = $('#run-a');
-const statusA = $('#status-a');
-const progA = $('#prog-a');
-const summaryA = $('#summary-a');
-const dlsA = $('#downloads-a');
+  // ===== Panel A 실행 =====
+  const statusA = $('#status-a');
+  const progA   = $('#prog-a');
+  const summaryA= $('#summary-a');
+  const dlsA    = $('#downloads-a');
+  $('#run-a').addEventListener('click', async ()=>{
+    if(!stateA){ alert('파일을 선택하거나 드래그앤드롭 하세요.'); return; }
+    $('#run-a').disabled=true; progA.hidden=false; progA.value=5; statusA.textContent='엔진 준비중...';
+    try{
+      const py = await pyodideReady; progA.value=25;
+      const buf = await stateA[0].arrayBuffer(); progA.value=40; statusA.textContent='검사 실행중...';
+      py.globals.set('UP_XLS', new Uint8Array(buf));
+      await py.runPythonAsync('sumA, out_bytes = run_inspection_xlsx(bytes(UP_XLS))');
+      progA.value=85; statusA.textContent='결과 정리...';
+      summaryA.innerHTML = '';
+      const sum = py.globals.get('sumA').toJs();
+      [['검사 참조건(A)', sum['A_검사한_참조']], ['일치(A)', sum['A_일치']], ['불일치(A)', sum['A_불일치']]].forEach(([k,v])=>{
+        const div = document.createElement('div');
+        div.className='pill'; div.innerHTML = `<div class="muted">${k}</div><div class="mono" style="font-size:20px">${v}</div>`;
+        summaryA.appendChild(div);
+      });
+      const bytes = py.globals.get('out_bytes').toJs();
+      const blob = new Blob([bytes], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      const url = URL.createObjectURL(blob);
+      dlsA.innerHTML = '';
+      const a = document.createElement('a');
+      a.href = url; a.download = `${stateA[0].name.replace(/\.[^.]+$/,'')}_검사결과.xlsx`;
+      a.className='dl'; a.textContent='결과 엑셀 다운로드';
+      dlsA.appendChild(a);
+      statusA.textContent='완료'; progA.value=100;
+    }catch(err){
+      console.error(err); statusA.textContent='오류: '+err.message; alert('오류\n'+err.message);
+    }finally{
+      progA.hidden=true; $('#run-a').disabled=false;
+    }
+  });
 
-runA.addEventListener('click', async ()=>{
-  if(!stateA){ alert('파일을 선택하거나 드래그앤드롭 하세요.'); return; }
-  runA.disabled=true; progA.hidden=false; progA.value=5; statusA.textContent='엔진 준비중...';
-  try{
-    const py = await pyodideReady; progA.value=25;
-    const buf = await stateA[0].arrayBuffer(); progA.value=40; statusA.textContent='검사 실행중...';
-    py.globals.set('UP_XLS', new Uint8Array(buf));
-    await py.runPythonAsync('sumA, out_bytes = run_inspection_xlsx(bytes(UP_XLS))');
-    progA.value=85; statusA.textContent='결과 정리...';
-    summaryA.innerHTML = '';
-    const sum = py.globals.get('sumA').toJs();
-    [['검사 참조건(A)', sum['A_검사한_참조']], ['일치(A)', sum['A_일치']], ['불일치(A)', sum['A_불일치']]].forEach(([k,v])=>{
-      const div = document.createElement('div');
-      div.className='pill'; div.innerHTML = `<div class="muted">${k}</div><div class="mono" style="font-size:20px">${v}</div>`;
-      summaryA.appendChild(div);
-    });
-    const bytes = py.globals.get('out_bytes').toJs();
-    const blob = new Blob([bytes], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-    const url = URL.createObjectURL(blob);
-    dlsA.innerHTML = '';
-    const a = document.createElement('a');
-    a.href = url; a.download = `${stateA[0].name.replace(/\.[^.]+$/,'')}_검사결과.xlsx`;
-    a.className='dl'; a.textContent='결과 엑셀 다운로드';
-    dlsA.appendChild(a);
-    statusA.textContent='완료'; progA.value=100;
-  }catch(err){
-    console.error(err); statusA.textContent='오류: '+err.message; alert('오류
-'+err.message);
-  }finally{
-    progA.hidden=true; runA.disabled=false;
-  }
-});
-
-// Panel B 실행
-const runB = $('#run-b');
-const statusB = $('#status-b');
-const progB = $('#prog-b');
-const dlsB = $('#downloads-b');
-const threshB = $('#thresh-b');
-
-runB.addEventListener('click', async ()=>{
-  if(!(stateB && stateB.length>1)){ alert('파일을 2개 이상 선택 또는 드래그앤드롭 하세요.'); return; }
-  runB.disabled=true; progB.hidden=false; progB.value=8; statusB.textContent='엔진 준비중...';
-  try{
-    const py = await pyodideReady; progB.value=20;
-    const list = [];
-    for(const f of stateB){ list.push([f.name, new Uint8Array(await f.arrayBuffer())]); }
-    py.globals.set('FILES_B', list);
-    py.globals.set('TH_B', Number(threshB.value)||30);
-    statusB.textContent='매칭 실행중...'; progB.value=45;
-    await py.runPythonAsync('names, out_bytes_b = run_bulk_match_xlsx(FILES_B, TH_B)');
-    progB.value=85; statusB.textContent='엑셀 생성...';
-    const bytes = py.globals.get('out_bytes_b').toJs();
-    const blob = new Blob([bytes], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-    const url = URL.createObjectURL(blob);
-    dlsB.innerHTML = '';
-    const a = document.createElement('a');
-    a.href = url; a.download = `단가매칭_모든순열_${new Date().toISOString().slice(0,10)}.xlsx`;
-    a.className='dl'; a.textContent='결과 엑셀 다운로드 (n! 시트)';
-    dlsB.appendChild(a);
-    statusB.textContent='완료'; progB.value=100;
-  }catch(err){
-    console.error(err); statusB.textContent='오류: '+err.message; alert('오류
-'+err.message);
-  }finally{
-    progB.hidden=true; runB.disabled=false;
-  }
+  // ===== Panel B 실행 =====
+  const statusB = $('#status-b');
+  const progB   = $('#prog-b');
+  const dlsB    = $('#downloads-b');
+  const threshB = $('#thresh-b');
+  $('#run-b').addEventListener('click', async ()=>{
+    if(!(stateB && stateB.length>1)){ alert('파일을 2개 이상 선택 또는 드래그앤드롭 하세요.'); return; }
+    $('#run-b').disabled=true; progB.hidden=false; progB.value=8; statusB.textContent='엔진 준비중...';
+    try{
+      const py = await pyodideReady; progB.value=20;
+      const list = [];
+      for(const f of stateB){ list.push([f.name, new Uint8Array(await f.arrayBuffer())]); }
+      py.globals.set('FILES_B', list);
+      py.globals.set('TH_B', Number(threshB.value)||30);
+      statusB.textContent='매칭 실행중...'; progB.value=45;
+      await py.runPythonAsync('names, out_bytes_b = run_bulk_match_xlsx(FILES_B, TH_B)');
+      progB.value=85; statusB.textContent='엑셀 생성...';
+      const bytes = py.globals.get('out_bytes_b').toJs();
+      const blob = new Blob([bytes], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      const url = URL.createObjectURL(blob);
+      dlsB.innerHTML = '';
+      const a = document.createElement('a');
+      a.href = url; a.download = `단가매칭_모든순열_${new Date().toISOString().slice(0,10)}.xlsx`;
+      a.className='dl'; a.textContent='결과 엑셀 다운로드 (n! 시트)';
+      dlsB.appendChild(a);
+      statusB.textContent='완료'; progB.value=100;
+    }catch(err){
+      console.error(err); statusB.textContent='오류: '+err.message; alert('오류\n'+err.message);
+    }finally{
+      progB.hidden=true; $('#run-b').disabled=false;
+    }
+  });
 });
 </script>
-</body>
-</html>
+
