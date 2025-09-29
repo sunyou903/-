@@ -42,10 +42,61 @@
   <!-- Panel A: 내역서검사 -->
   <div class="panel active" id="panel-a">
     <div class="card">
+      <div class="row"><!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>내역서검사 & 단가매칭</title>
+  <style>
+    :root{--bg:#0b1020;--fg:#eef2ff;--muted:#9aa4c7;--card:#141a33;--accent:#7c9bff;--ok:#2ecc71;--warn:#ffb020;--err:#ff5c80}
+    html,body{margin:0;background:var(--bg);color:var(--fg);font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Pretendard,Apple SD Gothic Neo,Malgun Gothic,Helvetica,Arial,sans-serif}
+    .wrap{max-width:1100px;margin:32px auto;padding:0 16px}
+    h1{font-weight:700;letter-spacing:-0.02em}
+    .tabs{display:flex;gap:8px;margin:20px 0}
+    .tab{padding:10px 14px;border-radius:12px;background:var(--card);cursor:pointer;color:var(--muted);border:1px solid #232a4a}
+    .tab.active{color:var(--fg);outline:2px solid var(--accent)}
+    .panel{display:none}
+    .panel.active{display:block}
+    .card{background:var(--card);border:1px solid #232a4a;border-radius:16px;padding:16px;margin:16px 0}
+    .row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+    input[type=file]{color:var(--fg)}
+    button{all:unset;display:inline-flex;gap:8px;align-items:center;cursor:pointer;background:linear-gradient(180deg,#7c9bff,#5a7bff);color:white;padding:10px 14px;border-radius:12px;font-weight:600}
+    button:disabled{opacity:.5;cursor:not-allowed}
+    .muted{color:var(--muted)}
+    .summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:12px}
+    .pill{border-radius:12px;padding:10px;background:#0f1530;border:1px solid #222a50}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    a.dl{display:inline-flex;align-items:center;gap:8px;margin-top:8px;padding:8px 10px;border-radius:10px;background:#0f1530;border:1px solid #222a50;color:#cfe0ff;text-decoration:none}
+    progress{width:240px;height:10px}
+    .foot{margin:36px 0;color:var(--muted);font-size:14px}
+    details{background:#0f1530;border:1px solid #222a50;border-radius:12px;padding:10px}
+    code{background:#0e1430;padding:2px 6px;border-radius:6px}
+    .drop{border:2px dashed #2b3566;border-radius:14px;padding:18px;background:#0e1530;color:#cfe0ff}
+    .drop.drag{background:#0f1b48;border-color:#7c9bff}
+    .filehint{font-size:12px;color:#9aa4c7}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>내역서검사 & 단가매칭 (GitHub Pages용, 브라우저 실행)</h1>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="a">1) 내역서검사</div>
+    <div class="tab" data-tab="b">2) 단가매칭 (다중 파일 → 1개 엑셀)</div>
+  </div>
+
+  <!-- Panel A: 내역서검사 -->
+  <div class="panel active" id="panel-a">
+    <div class="card">
       <div class="row">
         <label><strong>엑셀 업로드</strong><br/><input id="file-a" type="file" accept=".xlsx,.xlsm,.xls" /></label>
         <button id="run-a" disabled>검사 실행</button>
         <div id="status-a" class="muted"></div>
+      </div>
+      <div class="drop" id="drop-a" style="margin-top:10px">
+        여기로 파일을 <b>드래그 앤 드롭</b> 하세요 (단일 파일)
+        <div class="filehint">지원: .xlsx .xlsm .xls</div>
       </div>
       <div class="row" style="margin-top:8px">
         <progress id="prog-a" value="0" max="100" hidden></progress>
@@ -70,6 +121,10 @@
         <label><strong>엑셀 여러 개 업로드</strong><br/><input id="files-b" type="file" multiple accept=".xlsx,.xlsm,.xls" /></label>
         <button id="run-b" disabled>단가 매칭 실행</button>
         <div id="status-b" class="muted"></div>
+      </div>
+      <div class="drop" id="drop-b" style="margin-top:10px">
+        여기로 파일을 <b>드래그 앤 드롭</b> 하세요 (여러 파일)
+        <div class="filehint">지원: .xlsx .xlsm .xls — 최소 2개 이상</div>
       </div>
       <div class="row" style="margin-top:8px">
         <label>유사도 임계값(0~100): <input id="thresh-b" type="number" value="30" min="0" max="100" style="width:80px" /></label>
@@ -104,6 +159,17 @@ $$('.tab').forEach(t=>t.addEventListener('click',()=>{
   $('#panel-'+target).classList.add('active');
 }));
 
+// Drag & Drop helpers
+function enableDrop(zone, onFiles){
+  ['dragenter','dragover'].forEach(ev=>zone.addEventListener(ev,(e)=>{e.preventDefault(); zone.classList.add('drag');}));
+  ['dragleave','drop'].forEach(ev=>zone.addEventListener(ev,(e)=>{e.preventDefault(); if(ev==='dragleave') zone.classList.remove('drag');}));
+  zone.addEventListener('drop',(e)=>{
+    zone.classList.remove('drag');
+    const files = e.dataTransfer.files;
+    if(files && files.length){ onFiles(files); }
+  });
+}
+
 // Pyodide loader
 let pyodideReady = (async()=>{
   const s = document.createElement('script');
@@ -111,8 +177,23 @@ let pyodideReady = (async()=>{
   document.head.appendChild(s);
   await new Promise(r=>{s.onload=r});
   const pyodide = await loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.26.1/full/'});
-  // core packages
-  await pyodide.loadPackage(["pandas","openpyxl","micropip"]);
+  // core packages (openpyxl은 loadPackage 대상이 아님)
+  await pyodide.loadPackage(["pandas","micropip"]);
+  // openpyxl을 PyPI에서 설치 (필수: 읽기/수식 파싱)
+  try{
+    await pyodide.runPythonAsync(`
+import micropip
+try:
+    await micropip.install('openpyxl==3.1.5')
+except Exception as e:
+    raise RuntimeError('openpyxl 설치 실패: ' + str(e))
+`);
+  }catch(e){
+    console.error(e);
+    alert('openpyxl 설치에 실패했습니다. 사내 네트워크에서 PyPI 접근이 차단되어 있을 수 있습니다.\nVPN/프록시 확인 후 새로고침 해주세요.\n상세: '+e);
+    throw e;
+  }
+
   // prepare python helpers (wrapped & minimized)
   const pyCode = `
 import io, itertools
@@ -341,9 +422,7 @@ def match_and_compare(left_df, right_df, th=30):
 def run_inspection_xlsx(xls_bytes: bytes):
     wb = load_workbook(io.BytesIO(xls_bytes), data_only=False, keep_vba=True)
     sumA, dfA = run_check_A(wb)
-    # 요약은 A만 우선 제공 (필요 시 확장 가능)
     # 결과 엑셀 작성
-    from openpyxl import Workbook
     bio = io.BytesIO()
     with pd.ExcelWriter(bio, engine='openpyxl') as writer:
         pd.DataFrame([sumA]).to_excel(writer, index=False, sheet_name='요약(A)')
@@ -387,7 +466,9 @@ const statusA = $('#status-a');
 const progA = $('#prog-a');
 const summaryA = $('#summary-a');
 const dlsA = $('#downloads-a');
+const dropA = $('#drop-a');
 
+enableDrop(dropA, (files)=>{ if(files.length){ fileA.files = files; runA.disabled=false; } });
 fileA.addEventListener('change',()=>{ runA.disabled = !(fileA.files && fileA.files[0]); });
 
 runA.addEventListener('click', async ()=>{
@@ -435,7 +516,9 @@ const statusB = $('#status-b');
 const progB = $('#prog-b');
 const dlsB = $('#downloads-b');
 const threshB = $('#thresh-b');
+const dropB = $('#drop-b');
 
+enableDrop(dropB, (files)=>{ if(files.length){ filesB.files = files; runB.disabled = files.length>1 ? false : true; } });
 filesB.addEventListener('change',()=>{ runB.disabled = !(filesB.files && filesB.files.length>1); });
 
 runB.addEventListener('click', async ()=>{
@@ -470,4 +553,3 @@ runB.addEventListener('click', async ()=>{
 </script>
 </body>
 </html>
-
