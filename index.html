@@ -189,10 +189,12 @@ runpy.run_path("/work/통합_일위대가_검사.py", run_name="__main__")
 
     } catch (e) {
       console.error(e);
-      log("ERROR[일위대가 검사]: " + e);
-      alert("실패: 콘솔/LOG 확인");
+      const msg = e?.stack || e?.message || String(e);
+      document.getElementById('log').textContent += "\nERROR: " + msg + "\n";
+      alert("실패: LOG/Console 확인");
     }
-  });
+
+      });
 
   // ② 단가 매칭 실행 (N개 파일의 모든 조합을 1개 XLSX로)
   $("#run-b").addEventListener("click", async () => {
@@ -267,11 +269,12 @@ wb.save("/work/${outfile}")
       a.download = outfile;
       a.style.display = "inline-block";
       log("▶ 단가 매칭: 완료 (XLSX 다운로드 가능)");
-
+      
     } catch (e) {
       console.error(e);
-      log("ERROR[단가 매칭]: " + e);
-      alert("실패: 콘솔/LOG 확인");
+      const msg = e?.stack || e?.message || String(e);
+      document.getElementById('log').textContent += "\nERROR: " + msg + "\n";
+      alert("실패: LOG/Console 확인");
     }
   });
 
